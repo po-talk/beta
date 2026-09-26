@@ -1123,6 +1123,12 @@ def T55(r, a, b):
     text = a.eval("window.__T.ttsTexts[window.__T.ttsTexts.length - 1]")
     shape = bool(text) and text.endswith('、こんにちは URL省略 です') and '🎉' not in text and 'example' not in text
     lit = b.wait_for("document.querySelector('#members .member:first-child').classList.contains('speaking')", timeout=SHORT)   # {now}＝自分の行が光る
+    # 同じ人が続けて送ったら名前を省く（v0.14.53）
+    time.sleep(2.5)
+    n1b = a.eval("window.__T.ttsTexts.length")
+    b.eval("(() => { const i = document.getElementById('chatText'); i.value = 'つづけて'; document.getElementById('chatSend').click() })()")
+    a.wait_for("window.__T.ttsTexts.length > %d" % n1b, timeout=SHORT + 10)
+    noname = a.eval("window.__T.ttsTexts[window.__T.ttsTexts.length - 1]") == 'つづけて'
     listener_quiet = b.eval("window.__T.ttsTexts.length") == 0   # 聞き役は合成しない
     # オフにすると読まない
     a.eval("document.getElementById('sndTts').click()")
@@ -1136,10 +1142,10 @@ def T55(r, a, b):
     vrow_gone = b.wait_for("!document.querySelector('#members .member.virtual')", timeout=SHORT)   # オフの案内で仮想行が消える
     show_tab(a, 'members'); show_tab(b, 'members')
     ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and face and arrived and shape and lit
-          and listener_quiet and off_quiet and off_saved and vrow_gone)
+          and noname and listener_quiet and off_quiet and off_saved and vrow_gone)
     r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
-            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s'
-            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, listener_quiet, off_quiet, off_saved, vrow_gone))
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s'
+            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, listener_quiet, off_quiet, off_saved, vrow_gone))
 
 
 def T55b(r, a, b):
