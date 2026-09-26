@@ -144,7 +144,7 @@
 </script>
 
 <!-- onnxruntime-web (WASMのパス解決を確実にするためスクリプトタグで先読み) -->
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.min.js"></script>
 
 <!-- importmap: piper-plus とその依存 @piper-plus/g2p を定義 -->
 <script type="importmap">
@@ -282,6 +282,17 @@
     const start = performance.now();
     try {
       // ONNX Runtime の WASM パスと並列スレッド数の設定
+      // ?ort=1.30.0 のように onnxruntime-web の版を差し替える（Safari の ConvInteger 未実装の切り分け・2026-09-27）。
+      // 既定は <script> で先読みした 1.21.0（globalThis.ort）。指定があれば ESM を読み込んで差し替える
+      const ortVer = new URLSearchParams(location.search).get('ort');
+      if (ortVer) {
+        try {
+          const m = await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@' + ortVer + '/dist/ort.min.mjs');
+          globalThis.ort = m;
+          globalThis.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@' + ortVer + '/dist/';
+          log('onnxruntime-web を ' + ortVer + ' に差し替えました');
+        } catch (e) { log('onnxruntime-web ' + ortVer + ' の読み込みに失敗: ' + (e.message || e), 'log-err'); }
+      }
       if (globalThis.ort) {
         patchOrt(globalThis.ort);   // ★上のコメント参照（feed の形をモデルに合わせる）
         // ?opt=disabled|basic|extended|all で ORT のグラフ最適化レベルを切り替えて、速さとメモリを比べる（2026-09-26 のメモリ調査）
@@ -295,7 +306,7 @@
           log('ORT graphOptimizationLevel=' + opt + '（アリーナ・メモリパターン停止）');
         }
         log('ORT の run() を包んで speaker_embedding(256) / mask [1,1] に合わせます');
-        globalThis.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/';
+        if (!ortVer) globalThis.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
         globalThis.ort.env.wasm.numThreads = 1; // モバイル（特にiOS Safari）での安全動作
         globalThis.ort.env.wasm.simd = true;
       }

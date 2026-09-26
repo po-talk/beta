@@ -25,9 +25,7 @@
   https://github.com/ayutaz/piper-plus
 - **ONNX Runtime Web**（`onnxruntime-web`）— MIT License — © Microsoft Corporation
   https://github.com/microsoft/onnxruntime
-- **音声モデル「つくよみちゃん 6lang」**（`ayousanz/piper-plus-tsukuyomi-chan`・Hugging Face）— piper-plus の配布物。
-  学習データは「つくよみちゃんコーパス」（夢前黎）で、その利用規約に従います。
-  https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan ／ https://tyc.rei-yumesaki.net/about/terms/
+- 音声モデルは v0.14.52 から**リポジトリに同梱**（下の「同梱している素材」を参照）。実行時に Hugging Face へは行かない。
 
 ---
 
@@ -67,6 +65,16 @@ ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
   2019-01-09 より前の公開なので、公開当時の CC0 1.0 でもある。
 - 本プロジェクトでの扱い：塗りを CSS の色に差し替え、湯気の線を描き足した**改変版**を、案内ページの一部として
   埋め込んでいる。この挿絵だけを切り出しての再配布は、Pixabay の条件に従うこと（本プロジェクトの MIT の対象外）。
+
+### 声のモデル「つくよみちゃん 6lang」int8 版（`models/tsukuyomi-chan-6lang-int8-v1.onnx`・`.onnx.json`）— MIT License ＋ つくよみちゃんコーパス利用規約
+
+- 元モデル：piper-plus プロジェクト配布の `tsukuyomi-chan-6lang-fp16.onnx`（https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan ・
+  コミット 36b59c825c36bd386b8960cf3f604382f52f2a87）。piper-plus のモデルは MIT License（© ayutaz and contributors）。
+- 本リポジトリの版：上のモデルを onnxruntime の動的量子化（per-channel・QInt8・波形デコーダ `dec.` は fp32 のまま）で int8 化した**派生物**（2026-09-27）。
+  音素表・言語表・設定（`.onnx.json`）は元のまま。改変内容は internal の作業記録にある。
+- 声の学習データは「つくよみちゃんコーパス」（夢前黎）。クレジット：**声：つくよみちゃんコーパス（夢前黎）** https://tyc.rei-yumesaki.net/
+- 用途：本アプリの読み上げ（配信部屋）でブラウザ内の合成に使うだけ。このファイル単体を素材として再配布する場合は、元の MIT の著作権表示と
+  つくよみちゃんコーパスの規約に従うこと。
 
 ### 顔グラフィック「つくよみちゃん」（`img/tsukuyomi-128.png`）— つくよみちゃんキャラクターライセンス
 
