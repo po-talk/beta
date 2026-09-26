@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.52
+  ぽっと通話〈実験版〉 v0.14.53
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1327,7 +1327,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.52'
+const APP_VERSION = 'v0.14.53'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1381,6 +1381,8 @@ const CALL_INIT = () => ({
   ttsResentAt: new Map(),   // 配信者：相手ごとの最後の送り直し時刻（連打よけ）
   ttsAckAt: 0,          // 受け取る側：最後に {ok} を返した時刻（音が来なければ 15 秒おきに返し直す）
   ttsSeen: new Map(),   // 案内の連打よけ
+  ttsLastUid: null,     // 配信者：最後に読み上げた投稿者（同じ人が続くときは名前を省く）
+  ttsLastAt: 0,         // 配信者：その時刻（間が空いたら名前をまた読む）
   profiles: new Map(),  // peerId → {name, emoji, muted, relay}（相手から届いたプロフィール）
   profileAction: null,  // 名前・絵文字・ミュート状態を配るデータチャネル（参加中だけ有効）
   metaAction: null,     // 部屋のメタデータ（名前・タグ）のデータチャネル（v0.13.0）
@@ -3215,10 +3217,25 @@ const loadTts = () => {
   return ttsLoading
 }
 // 表示の文字（capText 済み）から読む文面を作る。空なら読まない
+// 名前の読み方（v0.14.53・利用者の要望）：
+//   ・同じ人のひとことが続くときは名前を省く（TTS_NAME_AGAIN_MS 以上あいたら、また読む）
+//   ・名前に記号があればその手前で切る（「qramo(クラモ)」→「qramo」・「名前｜読み方」→「名前」）。読み方やおまけ情報を名前に書く人がいて長い
+//   ・長すぎる名前は TTS_NAME_MAX 文字で切る。ー（長音）は切らない
+const TTS_NAME_AGAIN_MS = 60000
+const TTS_NAME_MAX = 12
+const TTS_NAME_CUT = /[\s（(【\[「『〔｜|／/・:：@＠#＃〜~,、]/u
+const ttsName = uid => {
+  const raw = ((uid === 'self' ? profile : call.profiles.get(uid) || {}).name || 'ゲスト').replace(TTS_STRIP, '').trim()
+  const cut = raw.split(TTS_NAME_CUT)[0].trim()
+  return [...(cut || raw || 'ゲスト')].slice(0, TTS_NAME_MAX).join('')
+}
 const ttsText = (uid, text) => {
   const t = text.replace(/https?:\/\/\S+|www\.\S+/gi, 'URL省略').replace(TTS_STRIP, '').replace(/\s+/g, ' ').trim()
   if (!t) return ''
-  const name = ((uid === 'self' ? profile : call.profiles.get(uid) || {}).name || 'ゲスト').replace(TTS_STRIP, '').trim()
+  const now = Date.now()
+  const again = uid !== call.ttsLastUid || now - call.ttsLastAt > TTS_NAME_AGAIN_MS
+  call.ttsLastUid = uid; call.ttsLastAt = now
+  const name = again ? ttsName(uid) : ''
   return (name ? name + '、' : '') + t
 }
 // 読んでいる間は**その人の声として**見せる＝行を .speaking にし、絵文字も弾ませる（vadTick が ttsReadingUid を見る）。
@@ -3300,12 +3317,12 @@ const renderTtsSent = () => {
   el.textContent = '届いている人：' + n + ' / ' + call.peers.size + ' 人' + (n < call.peers.size ? '（古い版の人には届きません。ページを開き直してもらってください）' : '')
 }
 // 読み込み → 見本を 1 回読む（準備ができたことが耳で分かる）。トグル ON と、保存オンでの入室（warm）の両方から
-const ttsStart = () => loadTts().then(() => {
+const ttsStart = (sample = true) => loadTts().then(() => {
   if (!sndTts || !ttsAllowed()) return
   ttsSetOn(true)                                        // 2 本目のトラックを用意して案内（{ok} が来た相手へ送る）
-  if (!ttsSpeaking) ttsSpeak('self', '読み上げの準備ができました')
+  if (sample && !ttsSpeaking) ttsSpeak('self', '読み上げの準備ができました')
 }).catch(() => {})
-const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsStart() }
+const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsStart(false) }   // つなぎ直し＝見本は読まない（全員に毎回流れる・レビュー §3-3）
 {
   const box = $('sndTts')
   box.checked = sndTts
