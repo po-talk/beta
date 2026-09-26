@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.53
+  ぽっと通話〈実験版〉 v0.14.54
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1327,7 +1327,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.53'
+const APP_VERSION = 'v0.14.54'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3069,7 +3069,9 @@ const TTS_ORT_DIST = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/'
 const TTS_LENGTH_SCALE = 1.4   // 実機で聞き取りやすかった速さ（1.0 は早口）
 const TTS_NOISE_SCALE = 0.667
 const ttsOk = typeof WebAssembly === 'object'
-let sndTts = false   // 毎回オフから（上の★）
+// ★「つなぎ直す」はページごと再読み込みするので（doReconnect）、読み上げのオンだけは rejoin の予約に乗せて引き継ぐ（v0.14.54・
+//   実機：つなぎ直すとチェックが外れていた）。同じ部屋へ戻るときの一度きり。別の部屋・次回はオフから（上の★）
+let sndTts = !!(rejoin && rejoin.tts)
 let lastVoiceAt = 0            // vadTick が更新（聞こえる相手か自分が話していれば）
 let ttsQueue = [], ttsTimer = null, ttsSpeaking = false, ttsSource = null
 let ttsReadingUid = null, ttsLast = ''   // いま読んでいる人（行を光らせる）／最後の出来事（診断窓用）
@@ -3085,7 +3087,16 @@ const ttsAllowed = () => ttsOk && !!call.joinedId && call.bcast && !!call.ownerK
 //     載せて（mkAudio は 1 人 1 本）配信者の声を捨ててしまう。返事の無い相手には送らない＝読まれないだけで壊れない。
 //   オフは removeStream せず（再ネゴでマイクが途切れる環境がある）トラックを無音にして案内 {on:false}。退出時にまとめて片づく。
 let ttsDest = null   // 通話ごとに作り直す（AudioContext と寿命を合わせる。leaveCall で null）
-const ttsEnsureDest = () => { if (!ttsDest) ttsDest = ensureAudioCtx().createMediaStreamDestination(); return ttsDest }
+// ★出所には無音の定常音源を常につないでおく：何もつながっていない MediaStreamDestination はフレームを出さず、受け取る側の
+//   track が muted のまま＝仮想行（音が流れているときだけ出す）が最初の読み上げまで出ない（2026-09-27 実機・つなぎ直し後）。
+//   無音でもフレームが流れれば track は live になる。帯域は読み上げ中と同じ（Opus の無音・聞き役 1 人あたり 30〜40kbps）
+const ttsEnsureDest = () => {
+  if (ttsDest) return ttsDest
+  const ctx = ensureAudioCtx()
+  ttsDest = ctx.createMediaStreamDestination()
+  try { const keep = ctx.createConstantSource(); keep.offset.value = 0; keep.connect(ttsDest); keep.start() } catch {}
+  return ttsDest
+}
 const ttsStreamFor = id => call.ttsSentStream.get(id) || ttsDest.stream   // 送り直した相手には新しい包み（sid が違う）
 const ttsAnnounce = target => {   // 配信者：案内。target 省略＝全員（sid は相手ごと）
   if (!call.ttsAction || !ttsAllowed() || !ttsDest) return
@@ -5069,7 +5080,7 @@ const doReconnect = async ({ auto = false } = {}) => {
   $('retry').disabled = true
   setState(auto ? 'つながりが切れたので、つなぎ直しています…' : 'つなぎ直しています…', 'busy')
   saveOwnerGrants()
-  try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name, muted: call.muted, at: Date.now() })) } catch {}
+  try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name, muted: call.muted, tts: sndTts, at: Date.now() })) } catch {}   // tts＝読み上げのオンを引き継ぐ（v0.14.54）
   // 先に退出を伝えてからリロードする。相手がこちらの離脱を早く知るほど、戻ったときに
   // すんなり繋ぎ直してもらえる。ただし完了を待ち続けない（届かなくてもリロードは進める）。
   leaveCall()
