@@ -8,3 +8,4 @@ tmp/
 
 # 内部メモ（HANDOFF・レビュー・計画）は別の非公開リポジトリ po-talk/potalk-internal。ここでは追跡しない
 internal/
+models-tmp/

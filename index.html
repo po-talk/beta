@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.51
+  ぽっと通話〈実験版〉 v0.14.52
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -28,7 +28,7 @@
   "piper-plus/":      "https://cdn.jsdelivr.net/npm/piper-plus@0.7.0/",
   "@piper-plus/g2p":  "https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/src/index.js",
   "@piper-plus/g2p/": "https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/",
-  "onnxruntime-web":  "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.mjs"
+  "onnxruntime-web":  "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.mjs"
 }}</script>
 <link rel="preconnect" href="https://esm.sh" crossorigin>
 <link rel="preconnect" href="https://pot-turn.itsuma-kuramoto.workers.dev" crossorigin>
@@ -47,14 +47,14 @@
      設定キー名が変わると黙って既定リレーへ落ちるが、それはここでブロックされて全滅する
      （静かな設定ドリフトが派手な失敗に変わる）。上げたら必ず2台で疎通確認すること。
      ★読み上げ（v0.14.42）：script-src の cdn.jsdelivr.net／unpkg.com はライブラリと wasm、'wasm-unsafe-eval' は wasm の
-     コンパイルに要る。connect-src の huggingface.co／*.hf.co は声のモデル（302 で地域の host へ飛ぶのでワイルドカード）。 -->
+     コンパイルに要る。声のモデルは v0.14.52 から repo 同梱（models/）＝'self' で足りる（huggingface.co の許可は外した）。 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
   script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://esm.sh https://static.cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
   media-src 'self' blob:;
-  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com https://huggingface.co https://*.hf.co wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.mostr.pub;
+  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.mostr.pub;
   manifest-src 'self';
   base-uri 'self';
   form-action 'none';
@@ -1327,7 +1327,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.51'
+const APP_VERSION = 'v0.14.52'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3054,10 +3054,16 @@ const TTS_MAX_WAIT_MS = 8000   // これ以上は待たずに読む
 const TTS_QUEUE_MAX = 3        // 溜めすぎない（溢れたら古い順に捨てる）
 const TTS_RETRY_MS = 250
 const TTS_STRIP = /[\p{Extended_Pictographic}️‍]/gu   // 絵文字（結合子・異体字セレクタごと）
-const TTS_MODEL_SHA = '36b59c825c36bd386b8960cf3f604382f52f2a87'
-const TTS_MODEL_URL = 'https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan/resolve/' + TTS_MODEL_SHA + '/tsukuyomi-chan-6lang-fp16.onnx'
+// ★声のモデルは repo 同梱の int8（v0.14.52）：piper-plus 配布の fp16（HF・sha 36b59c8）を別 PC で量子化した派生物（internal/TASK-int8-quantize-v2）。
+//   デコーダ（dec.・重みの 9%）だけ fp32 に残し、残り（flow・enc_p・dp）を per-channel の int8 に。26.5MB。品質は利用者の聞き比べで「元と区別つかない」。
+//   本体のメモリ（Mac Chrome 実測）：ORT 1.21 の既定バンドルなら 871MB → 503MB だが、その組み合わせは Safari で動かない（下の TTS_ORT_DIST）。
+//   いまは ORT 1.30 の wasm 専用バンドルで 717MB（−150MB）。u8 重みの版（G・internal/TASK-int8-quantize-v3）で 1.21 に戻して 500MB 級を狙う。
+//   同一オリジンなので CSP の追加なし・コードと同じコミットで動く。
+//   **差し替えるときは名前を変える（v2…）**：piper-plus は URL をキーに IndexedDB に残すので、同名で中身を変えると古いのが使われ続ける。
+//   相対パスは piper-plus が HF の repo 名と誤解するので絶対 URL にする
+const TTS_MODEL_URL = new URL('models/tsukuyomi-chan-6lang-int8-v1.onnx', location.href).href
 const TTS_WASM_URL = 'https://unpkg.com/piper-plus@0.7.0/dist/rust-wasm/piper_plus_wasm.js'
-const TTS_ORT_DIST = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/'
+const TTS_ORT_DIST = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/'   // wasm 専用バンドル（ort.wasm.min.mjs）と揃える。1.30 の素の wasm は int8 の Conv（ConvInteger u8×s8）を持つ（1.21〜1.23 は無い＝Safari で NOT_IMPLEMENTED・2026-09-27）
 const TTS_LENGTH_SCALE = 1.4   // 実機で聞き取りやすかった速さ（1.0 は早口）
 const TTS_NOISE_SCALE = 0.667
 const ttsOk = typeof WebAssembly === 'object'
@@ -3191,7 +3197,7 @@ const loadTts = () => {
       ttsStage('読み上げの準備 ③/③ 声のモデル…')
       const label = { model: '声のモデル', phonemizer: '辞書', ready: '準備完了' }
       const eng = await Piper.initialize({
-        model: TTS_MODEL_URL, ort, wasmG2pUrl: TTS_WASM_URL,
+        model: window.__potTtsModel || TTS_MODEL_URL, ort, wasmG2pUrl: TTS_WASM_URL,   // __potTtsModel＝測定用の差し替え口（int8 の比較）
         onProgress: ({ stage, progress }) => ttsStage('読み上げの準備 ③/③ ' + (label[stage] || stage) + ' ' + Math.round((progress || 0) * 100) + '%')
       })
       ttsEngine = { synth: async text => {
