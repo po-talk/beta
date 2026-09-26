@@ -284,13 +284,15 @@
       // ONNX Runtime の WASM パスと並列スレッド数の設定
       // ?ort=1.30.0 のように onnxruntime-web の版を差し替える（Safari の ConvInteger 未実装の切り分け・2026-09-27）。
       // 既定は <script> で先読みした 1.21.0（globalThis.ort）。指定があれば ESM を読み込んで差し替える
+      // &bundle=wasm で wasm 専用バンドル（ort.wasm.min.mjs＝本体 v0.14.52 と同じ・Safari が読む素の wasm と同じ経路）
       const ortVer = new URLSearchParams(location.search).get('ort');
+      const bundle = new URLSearchParams(location.search).get('bundle') === 'wasm' ? 'ort.wasm.min.mjs' : 'ort.min.mjs';
       if (ortVer) {
         try {
-          const m = await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@' + ortVer + '/dist/ort.min.mjs');
+          const m = await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@' + ortVer + '/dist/' + bundle);
           globalThis.ort = m;
           globalThis.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@' + ortVer + '/dist/';
-          log('onnxruntime-web を ' + ortVer + ' に差し替えました');
+          log('onnxruntime-web を ' + ortVer + '（' + bundle + '）に差し替えました');
         } catch (e) { log('onnxruntime-web ' + ortVer + ' の読み込みに失敗: ' + (e.message || e), 'log-err'); }
       }
       if (globalThis.ort) {
