@@ -1129,6 +1129,15 @@ def T55(r, a, b):
     b.eval("(() => { const i = document.getElementById('chatText'); i.value = 'つづけて'; document.getElementById('chatSend').click() })()")
     a.wait_for("window.__T.ttsTexts.length > %d" % n1b, timeout=SHORT + 10)
     noname = a.eval("window.__T.ttsTexts[window.__T.ttsTexts.length - 1]") == 'つづけて'
+    # 「名前は読まない」スイッチ（v0.14.55）：配信者自身のひとこと（別の投稿者＝本来は名前が付く）が名前なしで読まれる
+    show_tab(a, 'settings')
+    sw = a.eval("(() => { const r = document.getElementById('sndTtsNameRow'); const b = document.getElementById('sndTtsNoName'); b.click(); return !r.hidden && b.checked })()")
+    n1c = a.eval("window.__T.ttsTexts.length")
+    show_tab(a, 'chat')
+    a.eval("(() => { const i = document.getElementById('chatText'); i.value = 'じぶん'; document.getElementById('chatSend').click() })()")
+    a.wait_for("window.__T.ttsTexts.length > %d" % n1c, timeout=SHORT)
+    noname2 = sw and a.eval("window.__T.ttsTexts[window.__T.ttsTexts.length - 1]") == 'じぶん' and a.eval("localStorage.getItem('pot-call-tts-noname') === '1'")
+    show_tab(a, 'settings'); a.eval("document.getElementById('sndTtsNoName').click()")   # 戻す
     listener_quiet = b.eval("window.__T.ttsTexts.length") == 0   # 聞き役は合成しない
     # オフにすると読まない
     a.eval("document.getElementById('sndTts').click()")
@@ -1142,10 +1151,10 @@ def T55(r, a, b):
     vrow_gone = b.wait_for("!document.querySelector('#members .member.virtual')", timeout=SHORT)   # オフの案内で仮想行が消える
     show_tab(a, 'members'); show_tab(b, 'members')
     ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and face and arrived and shape and lit
-          and noname and listener_quiet and off_quiet and off_saved and vrow_gone)
+          and noname and noname2 and listener_quiet and off_quiet and off_saved and vrow_gone)
     r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
-            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s'
-            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, listener_quiet, off_quiet, off_saved, vrow_gone))
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 名前を読まないスイッチ=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s'
+            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, noname2, listener_quiet, off_quiet, off_saved, vrow_gone))
 
 
 def T55b(r, a, b):
