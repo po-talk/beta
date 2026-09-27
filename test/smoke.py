@@ -871,8 +871,8 @@ def T44(r):
     # ④ 元に戻した → 指紋が戻って2択が消える
     t2.eval("(() => { const i = document.getElementById('room'); i.value = '指紋テスト'; i.dispatchEvent(new Event('input')) })()")
     back_hidden = t2.eval(row); back_pk = t2.eval(pk)
-    # ボタンの文言：聞き役なら「リスナーとして参加する」、オーナーと改名後は「部屋を作る」
-    labels = owner_lbl == '部屋を作る' and listener_lbl == 'リスナーとして参加する' and renamed_lbl == '部屋を作る'
+    # ボタンの文言：オーナー本人は「配信を始める」（v0.14.56）、聞き役なら「リスナーとして参加する」、改名後（🏠 で新しく作る）は「部屋を作る」
+    labels = owner_lbl == '配信を始める' and listener_lbl == 'リスナーとして参加する' and renamed_lbl == '部屋を作る'
     ok = (owner_hidden and owner_bc and entry_live and listener_hidden and listener_pk and touched_hidden and touched_pk
           and renamed_shown and not renamed_pk and back_hidden and back_pk and labels)
     r.check('T44', '指紋付きのリンクでは部屋の種類を選ばせない（聞き役はボタンで分かる）', ok, 'pass',
