@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.56
+  ぽっと通話〈実験版〉 v0.14.57
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1340,7 +1340,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.56'
+const APP_VERSION = 'v0.14.57'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2696,27 +2696,65 @@ const bgmAmbient = seed => {
   chord()
   bgm.timers.push(setInterval(chord, 9000))
 }
-// 🔥 焚き火：温かいメラメラ炎（風切りなし）＋炭のチリチリ＋火の粉パチパチ
+// カールノイズ（2D流体ゆらぎ）：Perlin ノイズの偏微分から発散ゼロの流速 (vx, vy) を算出（v0.14.57）
+// 炎の呼吸（低域フィルター・音量連動）・火の粉の気流パンニング・炭のチリチリそよ風フェージングを生成
+const bgmCurlNoise = seed => {
+  const perm = new Uint8Array(512), p = new Uint8Array(256)
+  for (let i = 0; i < 256; i++) p[i] = i
+  let s = (seed || 42) & 0x7fffffff
+  for (let i = 255; i > 0; i--) {
+    s = (s * 16807) % 2147483647
+    const j = s % (i + 1)
+    const t = p[i]; p[i] = p[j]; p[j] = t
+  }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255]
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10)
+  const lerp = (t, a, b) => a + t * (b - a)
+  const grad = (h, x, y, z) => {
+    const u = (h & 15) < 8 ? x : y
+    const v = (h & 15) < 4 ? y : ((h & 15) === 12 || (h & 15) === 14 ? x : z)
+    return (((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v))
+  }
+  const noise = (x, y, z = 0) => {
+    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255
+    x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z)
+    const u = fade(x), v = fade(y), w = fade(z)
+    const A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z
+    const B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z
+    return lerp(w,
+      lerp(v,
+        lerp(u, grad(perm[AA], x, y, z), grad(perm[BA], x - 1, y, z)),
+        lerp(u, grad(perm[AB], x, y - 1, z), grad(perm[BB], x - 1, y - 1, z))),
+      lerp(v,
+        lerp(u, grad(perm[AA + 1], x, y, z - 1), grad(perm[BA + 1], x - 1, y, z - 1)),
+        lerp(u, grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1))))
+  }
+  return (x, y, t, eps = 0.05) => {
+    const vx = (noise(x, y + eps, t) - noise(x, y - eps, t)) / (2 * eps)
+    const vy = -(noise(x + eps, y, t) - noise(x - eps, y, t)) / (2 * eps)
+    return { vx, vy }
+  }
+}
+
+// 🔥 焚き火：カールノイズ流体ゆらぎ（炎の呼吸・気流の火の粉パン・炭のチリチリ）＋薪の爆ぜ（v0.14.57）
 const bgmBonfire = seed => {
   const ctx = ctx0()
   const noise = bgmNoise(ctx, 2.5)   // 2.5秒・末尾クロスフェード済み（ループ境界の周期クリック防止）
+  const curl = bgmCurlNoise(seed)
 
-  // 1. 炎のメラメラ燃焼（低域ボディ＋3.6Hz振幅変調）
+  // 1. 炎のメラメラ燃焼（低域ボディ＋カールノイズによる呼吸ゆらぎ）
   const rSrc = bgmTrack(ctx.createBufferSource())
   rSrc.buffer = noise; rSrc.loop = true
   const rf1 = bgmTrack(ctx.createBiquadFilter()), rf2 = bgmTrack(ctx.createBiquadFilter())
   rf1.type = 'lowpass'; rf1.frequency.value = 240; rf1.Q.value = 0.9
   rf2.type = 'lowpass'; rf2.frequency.value = 240; rf2.Q.value = 0.6
-  const amOsc = bgmTrack(ctx.createOscillator()), amG = bgmTrack(ctx.createGain())
-  amOsc.frequency.value = 3.6; amG.gain.value = 0.126
   const baseG = bgmTrack(ctx.createGain()); baseG.gain.value = 1.0
-  amOsc.connect(amG); amG.connect(baseG.gain); amOsc.start()
   const rGain = bgmTrack(ctx.createGain())
   rGain.gain.value = 0.396
   rSrc.connect(rf1); rf1.connect(rf2); rf2.connect(baseG); baseG.connect(rGain); rGain.connect(bgm.gain)
   rSrc.start()
 
-  // 2. 炭のチリチリ（沈黙を温めるクッション）
+  // 2. 炭のチリチリ（沈黙を温めるクッション・微風フェージング）
   const sSrc = bgmTrack(ctx.createBufferSource())
   sSrc.buffer = noise; sSrc.loop = true
   const sBpf = bgmTrack(ctx.createBiquadFilter())
@@ -2726,9 +2764,23 @@ const bgmBonfire = seed => {
   sSrc.connect(sBpf); sBpf.connect(sGain); sGain.connect(bgm.gain)
   sSrc.start()
 
-  // 3. 火の粉パチパチ ＆ 薪の爆ぜ
+  // 3. 火の粉パチパチ ＆ 薪の爆ぜ ＆ カールノイズ流体変調（50ms 周期）
   let nextSnap = ctx.currentTime + 3.0
+  let flowTime = 0
   bgmSchedule(0.05, (step, t) => {
+    flowTime += 0.05 * 0.45
+    const { vx, vy } = curl(0, 0, flowTime * 0.8)
+
+    // 炎の呼吸：上昇気流 vy に合わせて低域フィルターと音量を連動変調
+    const targetFreq = Math.max(120, 240 + vy * 70)
+    rf1.frequency.setTargetAtTime(targetFreq, t, 0.05)
+    rf2.frequency.setTargetAtTime(targetFreq, t, 0.05)
+    baseG.gain.setTargetAtTime(Math.max(0.2, 1.0 + vy * 0.22), t, 0.05)
+
+    // 炭のチリチリ：横風流速 vx に合わせてフィルター周波数をわずかにフェージング
+    sBpf.frequency.setTargetAtTime(1800 + vx * 200, t, 0.06)
+
+    // 火の粉パチパチ（気流に乗って左右に揺れるステレオ定位）
     if (Math.random() < 0.25) {
       const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain()
       src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1200 + Math.random() * 2000; f.Q.value = 4
@@ -2738,11 +2790,15 @@ const bgmBonfire = seed => {
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
       src.connect(f); f.connect(g)
       if (ctx.createStereoPanner) {
-        const p = ctx.createStereoPanner(); p.pan.value = (Math.random() * 2 - 1) * 0.5
+        const p = ctx.createStereoPanner()
+        const pan = Math.max(-0.95, Math.min(0.95, (Math.random() * 2 - 1) * 0.5 + vx * 0.75))
+        p.pan.value = pan
         g.connect(p); p.connect(bgm.gain)
       } else { g.connect(bgm.gain) }
       src.start(t); src.stop(t + dur + 0.01)
     }
+
+    // 薪の爆ぜ
     if (t > nextSnap) {
       nextSnap = t + 10.5 + Math.random() * 10.5
       const pSrc = ctx.createBufferSource(), pF = ctx.createBiquadFilter(), pG = ctx.createGain()
