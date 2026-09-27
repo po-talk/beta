@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.60
+  ぽっと通話〈実験版〉 v0.14.61
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1340,7 +1340,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.60'
+const APP_VERSION = 'v0.14.61'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2739,51 +2739,90 @@ const bgmCurlNoise = seed => {
   }
 }
 
-// 🔥 焚き火：カールノイズ流体ゆらぎ（炎の呼吸・気流の火の粉パン・炭のチリチリ）＋二段フレア（v0.14.57）
+// ブラウン雑音（低域寄り・「ゴォー」の質感）。白色を積分して正規化。末尾を先頭へブレンドしてループ境界のクリックを防ぐ（bgmNoise と同じ流儀）
+const bgmBrown = (ctx, sec) => {
+  const len = Math.floor(ctx.sampleRate * sec), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0)
+  let y = 0; for (let i = 0; i < len; i++) { y = (y + (Math.random() * 2 - 1) * 0.02) * 0.998; d[i] = y }
+  let mx = 0; for (let i = 0; i < len; i++) mx = Math.max(mx, Math.abs(d[i])); for (let i = 0; i < len; i++) d[i] /= (mx || 1)
+  const f = Math.min(2048, len >> 2); for (let i = 0; i < f; i++) { const r = i / f; d[len - f + i] = d[len - f + i] * (1 - r) + d[i] * r }
+  return buf
+}
+// 🔥 焚き火（v0.14.61・利用者が耳で決めた値）：呼吸のゆらぎ（bgmCurlNoise）の上に 5 つの層。
+//   1 炎本体（240Hz 以下の低域＋10Hz 以下のフリッカー）　2 炭のチリチリ（1.8kHz・断続）　3 ねっとり（ブラウン雑音の共鳴 320Hz・
+//   燃え上がるときだけ膨らむ）　4 はためき（白色の 750Hz 帯・14Hz で不規則に揺れ、呼吸で強く）　5 パリッ（2.8kHz の乾いた弾け・たまに固まる）
+//   ＋ 従来の火の粉と薪の爆ぜ。値は tools/fire_lab.html で決め、連続層は前の版と実効音量が揃うよう 2.5 倍している
+//   （オフライン描画で実測：旧 0.031 → 新 0.032。弾ける音の大きさは据え置き）。「メラメラの伝え方は難しい」＝いつか詰め直す（HANDOFF）
+const FIRE = {
+  body: 0.10, flick: 5.3,                       // 1
+  chiri: 0.03, chiriQ: 3, chiriMod: 0.2,        // 2（断続の深さ 0.2）
+  mid: 0.25, midF: 320, midQ: 4.3, mid2: 0.45, midRate: 1.5, midDepth: 0.55, midSat: 0.65, midGate: 0.6,   // 3
+  flu: 0.0625, fluF: 750, fluQ: 1.7, fluRate: 14, fluDepth: 0.65, fluBreath: 1.4,   // 4
+  tickRate: 3.5, tickLvl: 0.42, tickF: 2800, tickDur: 5, burst: 0.08,   // 5（回数/秒・音量・中心 Hz・長さ ms・固まる確率）
+  crack: 0.07                                   // 火の粉の基本出現率（50ms あたり）
+}
 const bgmBonfire = seed => {
   const ctx = ctx0()
   const noise = bgmNoise(ctx, 2.5)   // 2.5秒・末尾クロスフェード済み（ループ境界の周期クリック防止）
+  const longNoise = bgmNoise(ctx, 11.3)   // ゆっくりした揺れの元（2.5 の倍数を避けて周期を耳から遠ざける・v0.14.59）
+  const lfoNoise = bgmNoise(ctx, 9.7)     // はためき用（フリッカーと相関させない）
+  const brown = bgmBrown(ctx, 6.1)
   const curl = bgmCurlNoise(seed)
+  const lfo = (buf, hz, q, norm, depth, target) => {   // 雑音 → LPF → 持ち上げ → 深さ → AudioParam へ（JS 依存ゼロの不規則な揺れ）
+    const src = bgmTrack(ctx.createBufferSource()); src.buffer = buf; src.loop = true
+    const f = bgmTrack(ctx.createBiquadFilter()); f.type = 'lowpass'; f.frequency.value = hz; f.Q.value = q
+    const n = bgmTrack(ctx.createGain()); n.gain.value = norm
+    const g = bgmTrack(ctx.createGain()); g.gain.value = depth
+    src.connect(f); f.connect(n); n.connect(g); g.connect(target); src.start()
+  }
 
-  // 1. 炎のメラメラ燃焼（低域ボディ＋カールノイズによる呼吸ゆらぎ＋audio-rate微細フリッカー）
+  // 1. 炎本体（低域ボディ＋呼吸ゆらぎ＋audio-rate フリッカー）
   const rSrc = bgmTrack(ctx.createBufferSource())
   rSrc.buffer = noise; rSrc.loop = true
   const rf1 = bgmTrack(ctx.createBiquadFilter()), rf2 = bgmTrack(ctx.createBiquadFilter())
   rf1.type = 'lowpass'; rf1.frequency.value = 240; rf1.Q.value = 0.9
   rf2.type = 'lowpass'; rf2.frequency.value = 240; rf2.Q.value = 0.6
   const baseG = bgmTrack(ctx.createGain()); baseG.gain.value = 1.0
-
-  // 二段フレア：JS 依存ゼロの audio-rate フリッカー（~10Hz LPF 微小ノイズを変調加算し炎の表面のチラつきを再現）
-  // ★ゲインの根拠（2026-09-27・OfflineAudioContext で実測）：白色ノイズ（実効値 0.577）を 10Hz の LPF に通すと実効値 0.017・
-  //   ピーク 0.053 まで落ちる。当初の 0.06 では変調が ±0.1%（無音同然）。3.0 で実効値 ±5%・ピーク ±16% の揺れになる
-  // ★フリッカーは**専用の長いバッファ**（11.3 秒・2.5 の倍数を避ける）：本体と同じ 2.5 秒ループを 10Hz の LPF に通すと滑らかな波形が
-  //   2.5 秒ごとに同じ形で繰り返され、0.4Hz の周期的なうねり（ウワンウワン）になる（レビュー指摘・2026-09-27）。0.2Hz のハイパスでは
-  //   直らない（繰り返し成分は 0.4Hz とその倍数＝素通り）。周期を 11.3 秒（0.09Hz）にし、上に乗る呼吸のゆらぎと位相がずれ続けるようにする。
-  //   メモリ約 2MB・生成は数ミリ秒。本体の 2.5 秒ループ（240Hz 帯の広帯域雑音）は v0.14.28 から実稼働で問題なしなので触らない
-  const flickNoise = bgmNoise(ctx, 11.3)
-  const flickSrc = bgmTrack(ctx.createBufferSource())
-  flickSrc.buffer = flickNoise; flickSrc.loop = true
-  const flickFilt = bgmTrack(ctx.createBiquadFilter())
-  flickFilt.type = 'lowpass'; flickFilt.frequency.value = 10; flickFilt.Q.value = 0.5
-  const flickG = bgmTrack(ctx.createGain())
-  flickG.gain.value = 3.0
-  flickSrc.connect(flickFilt); flickFilt.connect(flickG); flickG.connect(baseG.gain)
-  flickSrc.start()
-
+  // フリッカー：白色→10Hz LPF は実効値 0.017（実測）なので、ゲイン 5.3 で ±9% 程度の揺れ
+  lfo(longNoise, 10, 0.5, 1, FIRE.flick, baseG.gain)
   const rGain = bgmTrack(ctx.createGain())
-  rGain.gain.value = 0.396
+  rGain.gain.value = FIRE.body
   rSrc.connect(rf1); rf1.connect(rf2); rf2.connect(baseG); baseG.connect(rGain); rGain.connect(bgm.gain)
   rSrc.start()
 
-  // 2. 炭のチリチリ（沈黙を温めるクッション・微風フェージング）
+  // 2. 炭のチリチリ（1.8kHz の帯域。常時の「サー」にならないよう、横風 vx でゆっくり出たり消えたり）
   const sSrc = bgmTrack(ctx.createBufferSource())
   sSrc.buffer = noise; sSrc.loop = true
   const sBpf = bgmTrack(ctx.createBiquadFilter())
-  sBpf.type = 'bandpass'; sBpf.frequency.value = 1800; sBpf.Q.value = 1.8
+  sBpf.type = 'bandpass'; sBpf.frequency.value = 1800; sBpf.Q.value = FIRE.chiriQ
+  const sMod = bgmTrack(ctx.createGain()); sMod.gain.value = 1
   const sGain = bgmTrack(ctx.createGain())
-  sGain.gain.value = 0.052
-  sSrc.connect(sBpf); sBpf.connect(sGain); sGain.connect(bgm.gain)
+  sGain.gain.value = FIRE.chiri
+  sSrc.connect(sBpf); sBpf.connect(sMod); sMod.connect(sGain); sGain.connect(bgm.gain)
   sSrc.start()
+
+  // 3. ねっとり（ブラウン雑音 → 共鳴 2 山 → 軽い飽和 → 燃え上がるときだけ膨らむ）
+  const mSrc = bgmTrack(ctx.createBufferSource()); mSrc.buffer = brown; mSrc.loop = true
+  const mB1 = bgmTrack(ctx.createBiquadFilter()); mB1.type = 'bandpass'; mB1.frequency.value = FIRE.midF; mB1.Q.value = FIRE.midQ
+  const mB2 = bgmTrack(ctx.createBiquadFilter()); mB2.type = 'bandpass'; mB2.frequency.value = FIRE.midF * 1.6; mB2.Q.value = FIRE.midQ
+  const m2G = bgmTrack(ctx.createGain()); m2G.gain.value = FIRE.mid2
+  const mSum = bgmTrack(ctx.createGain())
+  const mSat = bgmTrack(ctx.createWaveShaper()); mSat.oversample = '2x'
+  { const k = FIRE.midSat, c = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; c[i] = Math.tanh(x * (1 + k * 6)) / Math.tanh(1 + k * 6) } mSat.curve = c }
+  const mAm = bgmTrack(ctx.createGain()); mAm.gain.value = 1
+  lfo(longNoise, FIRE.midRate, 1.2, 40, FIRE.midDepth, mAm.gain)
+  const mG = bgmTrack(ctx.createGain()); mG.gain.value = FIRE.mid * (1 - FIRE.midGate * 0.85)   // 普段は引っ込め、燃え上がりで mAm が膨らむ
+  mSrc.connect(mB1); mSrc.connect(mB2); mB1.connect(mSum); mB2.connect(m2G); m2G.connect(mSum); mSum.connect(mSat); mSat.connect(mAm); mAm.connect(mG); mG.connect(bgm.gain)
+  mSrc.start()
+
+  // 4. はためき（白色の 750Hz 帯・共鳴なし・14Hz で不規則に揺れる＝炎の舌。呼吸が上がると強く）
+  const fSrc = bgmTrack(ctx.createBufferSource()); fSrc.buffer = noise; fSrc.loop = true
+  const fBpf = bgmTrack(ctx.createBiquadFilter()); fBpf.type = 'bandpass'; fBpf.frequency.value = FIRE.fluF; fBpf.Q.value = FIRE.fluQ
+  const fAm = bgmTrack(ctx.createGain()); fAm.gain.value = 1
+  lfo(lfoNoise, FIRE.fluRate, 1.0, 40, FIRE.fluDepth, fAm.gain)
+  const fBreath = bgmTrack(ctx.createGain()); fBreath.gain.value = 1
+  const fG = bgmTrack(ctx.createGain()); fG.gain.value = FIRE.flu
+  fSrc.connect(fBpf); fBpf.connect(fAm); fAm.connect(fBreath); fBreath.connect(fG); fG.connect(bgm.gain)
+  fSrc.start()
 
   // 3. 火の粉パチパチ ＆ 薪の爆ぜ ＆ カールノイズ流体変調（bgmSchedule 先読み絶対時刻同期）
   let nextSnap = ctx.currentTime + 3.0
@@ -2803,11 +2842,27 @@ const bgmBonfire = seed => {
     rf2.frequency.setTargetAtTime(targetFreq, t, tc)
     baseG.gain.setTargetAtTime(Math.min(1.35, Math.max(0.2, 1.0 + vy * 0.22)), t, tc)   // vy は ±1.02（実測）＝0.78〜1.22。上限は保険
 
-    // 炭のチリチリ：横風流速 vx に合わせてフィルター周波数をわずかにフェージング
+    // 炭のチリチリ：横風流速 vx に合わせてフィルター周波数をわずかにフェージング＋ゆっくり出たり消えたり（断続）
     sBpf.frequency.setTargetAtTime(1800 + vx * 200, t, 0.06)
+    sMod.gain.setTargetAtTime(1 - FIRE.chiriMod * (0.5 - 0.5 * vx), t, 0.12)
+    // ねっとりは燃え上がり（vy）で膨らみ、はためきは呼吸で強くなる
+    mAm.gain.setTargetAtTime(1 + Math.max(0, vy) * (0.5 + FIRE.midGate * 3), t, tc)
+    fBreath.gain.setTargetAtTime(Math.max(0.15, 1 + vy * FIRE.fluBreath), t, tc)
+    // パリッ：短く高い乾いた弾け。たまに 3〜6 発が 150ms に固まる（パリパリッ）。ワンショットは bgm.nodes に入れない（既存の火の粉と同じ）
+    const nTicks = Math.random() < FIRE.burst ? 3 + Math.floor(Math.random() * 4) : (Math.random() < FIRE.tickRate * 0.05 ? 1 : 0)
+    for (let i = 0; i < nTicks; i++) {
+      const tt = t + (nTicks > 1 ? Math.random() * 0.15 : 0)
+      const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain()
+      src.buffer = noise; bp.type = 'bandpass'; bp.frequency.value = FIRE.tickF * (0.7 + Math.random() * 0.6); bp.Q.value = 6
+      const d = FIRE.tickDur / 1000 * (0.6 + Math.random() * 0.8)
+      g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(FIRE.tickLvl * (0.5 + Math.random() * 0.5), tt + 0.0007); g.gain.exponentialRampToValueAtTime(0.0001, tt + d)
+      src.connect(bp); bp.connect(g)
+      if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = (Math.random() * 2 - 1) * 0.7; g.connect(p); p.connect(bgm.gain) } else g.connect(bgm.gain)
+      src.start(tt); src.stop(tt + d + 0.01)
+    }
 
     // 火の粉パチパチ（気流 vy が立ち上がると発生率が自然にアップ＋気流に乗るステレオ定位）
-    const crackleProb = 0.15 + Math.max(0, vy) * 0.28
+    const crackleProb = FIRE.crack + Math.max(0, vy) * 0.28
     if (Math.random() < crackleProb) {
       const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain()
       src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1200 + Math.random() * 2000; f.Q.value = 4

@@ -1,0 +1,161 @@
+<!doctype html><meta charset="utf-8"><title>焚き火ラボ</title>
+<style>body{font:14px system-ui;margin:16px;max-width:720px}label{display:grid;grid-template-columns:200px 1fr 60px;gap:8px;align-items:center;margin:6px 0}input[type=range]{width:100%}fieldset{margin:10px 0}button{font-size:15px;padding:8px 14px}.v{text-align:right;font-variant-numeric:tabular-nums}</style>
+<h2>🔥 焚き火ラボ（現行 v0.14.60 の構成＋提案の 2 層）</h2>
+<p><button id="go">▶ 再生</button> <button id="stop">■ 停止</button> <span id="st"></span></p>
+<fieldset><legend>1. 炎本体（240Hz 以下の低域・呼吸のゆらぎ）</legend>
+<label>音量 <input type=range id=body min=0 max=1 step=0.01 value=0.25><span class=v></span></label>
+<label>微細フリッカー量（現行 3.0） <input type=range id=flick min=0 max=8 step=0.1 value=6.3><span class=v></span></label>
+</fieldset>
+<fieldset><legend>2. 炭のチリチリ（1.8kHz の帯域＝「サー」の元）</legend>
+<label>音量（現行 0.052） <input type=range id=chiri min=0 max=0.1 step=0.002 value=0.012><span class=v></span></label>
+<label>帯域の狭さ Q（現行 1.8） <input type=range id=chiriQ min=0.5 max=6 step=0.1 value=3><span class=v></span></label>
+<label>断続の深さ（0＝常時） <input type=range id=chiriMod min=0 max=1 step=0.05 value=0.2><span class=v></span></label>
+</fieldset>
+<fieldset><legend>3. 提案：メラメラ（ねっとり版＝低め・共鳴・ゆっくり深く揺れる）</legend>
+<label>音量（0＝なし） <input type=range id=mid min=0 max=0.5 step=0.005 value=0.105><span class=v></span></label>
+<label>音源（0＝白色 / 1＝ブラウン） <input type=range id=midBrown min=0 max=1 step=1 value=1><span class=v></span></label>
+<label>中心周波数 Hz <input type=range id=midF min=120 max=1200 step=10 value=320><span class=v></span></label>
+<label>共鳴の強さ Q <input type=range id=midQ min=0.5 max=12 step=0.1 value=3.7><span class=v></span></label>
+<label>2 山目（1.6 倍）の量 <input type=range id=midQ2 min=0 max=1 step=0.05 value=0.45><span class=v></span></label>
+<label>揺れの速さ Hz <input type=range id=midRate min=1 max=25 step=0.5 value=1.5><span class=v></span></label>
+<label>揺れの深さ <input type=range id=midDepth min=0 max=1.5 step=0.05 value=0.55><span class=v></span></label>
+<label>粘り（飽和） <input type=range id=midSat min=0 max=1 step=0.05 value=0.65><span class=v></span></label>
+<label>燃え上がりゲート（0＝常時 / 1＝勢いのある時だけ） <input type=range id=midGate min=0 max=1 step=0.05 value=0.6><span class=v></span></label>
+</fieldset>
+<fieldset><legend>6. 提案：メラメラ B（はためき＝広帯域・共鳴なし・不規則に 5〜12Hz で揺れる）</legend>
+<label>音量（0＝なし） <input type=range id=flu min=0 max=0.3 step=0.005 value=0.06><span class=v></span></label>
+<label>中心周波数 Hz <input type=range id=fluF min=500 max=4000 step=50 value=1500><span class=v></span></label>
+<label>帯域の広さ（Q・小さいほど広い） <input type=range id=fluQ min=0.3 max=3 step=0.1 value=0.7><span class=v></span></label>
+<label>はためきの速さ Hz <input type=range id=fluRate min=2 max=20 step=0.5 value=8><span class=v></span></label>
+<label>はためきの深さ（1 以上で途切れる） <input type=range id=fluDepth min=0 max=2 step=0.05 value=1.2><span class=v></span></label>
+<label>呼吸で強くなる量 <input type=range id=fluBreath min=0 max=3 step=0.1 value=1.5><span class=v></span></label>
+</fieldset>
+<fieldset><legend>5. 提案：パリッ（乾いた高い弾け）</legend>
+<label>1 秒あたりの回数 <input type=range id=tickRate min=0 max=20 step=0.5 value=3.5><span class=v></span></label>
+<label>音量 <input type=range id=tickLvl min=0 max=1 step=0.02 value=0.46><span class=v></span></label>
+<label>高さ Hz（中心） <input type=range id=tickF min=2000 max=9000 step=100 value=2800><span class=v></span></label>
+<label>長さ ms <input type=range id=tickDur min=1 max=12 step=0.5 value=5><span class=v></span></label>
+<label>まとめて弾ける確率（パリパリッ） <input type=range id=burst min=0 max=0.3 step=0.01 value=0.08><span class=v></span></label>
+</fieldset>
+<fieldset><legend>4. 火の粉・爆ぜ</legend>
+<label>火の粉の出現率（現行 0.15） <input type=range id=crack min=0 max=0.5 step=0.01 value=0.07><span class=v></span></label>
+<label>全体音量 <input type=range id=master min=0 max=1 step=0.01 value=0.54><span class=v></span></label>
+</fieldset>
+<p id="log" style="white-space:pre-wrap;color:#555"></p>
+<script>
+const $ = id => document.getElementById(id); const P = {}
+document.querySelectorAll('input[type=range]').forEach(i => { const show = () => { i.nextElementSibling.textContent = i.value; P[i.id] = +i.value }; i.oninput = () => { show(); apply() }; show() })
+let ctx, master, nodes = [], timers = [], live = null
+const track = n => (nodes.push(n), n)
+const mkNoise = (sec) => { const len = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; const f = Math.min(512, len >> 2); for (let i = 0; i < f; i++) { const r = i / f; d[len - f + i] = d[len - f + i] * (1 - r) + d[i] * r } return b }
+const mkBrown = (sec) => { const len = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0); let y = 0; for (let i = 0; i < len; i++) { y = (y + (Math.random() * 2 - 1) * 0.02) * 0.998; d[i] = y } let mx = 0; for (let i = 0; i < len; i++) mx = Math.max(mx, Math.abs(d[i])); for (let i = 0; i < len; i++) d[i] /= (mx || 1); const f = Math.min(2048, len >> 2); for (let i = 0; i < f; i++) { const r = i / f; d[len - f + i] = d[len - f + i] * (1 - r) + d[i] * r } return b }
+const curlNoise = seed => { const perm = new Uint8Array(512), p = new Uint8Array(256); for (let i = 0; i < 256; i++) p[i] = i; let s = (seed || 42) & 0x7fffffff; for (let i = 255; i > 0; i--) { s = (s * 16807) % 2147483647; const j = s % (i + 1); const t = p[i]; p[i] = p[j]; p[j] = t } for (let i = 0; i < 512; i++) perm[i] = p[i & 255]
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10), lerp = (t, a, b) => a + t * (b - a), grad = (h, x, y, z) => { const u = (h & 15) < 8 ? x : y, v = (h & 15) < 4 ? y : ((h & 15) === 12 || (h & 15) === 14 ? x : z); return (((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v)) }
+  const noise = (x, y, z = 0) => { const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255; x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z); const u = fade(x), v = fade(y), w = fade(z); const A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z, B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z
+    return lerp(w, lerp(v, lerp(u, grad(perm[AA], x, y, z), grad(perm[BA], x - 1, y, z)), lerp(u, grad(perm[AB], x, y - 1, z), grad(perm[BB], x - 1, y - 1, z))), lerp(v, lerp(u, grad(perm[AA + 1], x, y, z - 1), grad(perm[BA + 1], x - 1, y, z - 1)), lerp(u, grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1)))) }
+  return (x, y, t, eps = 0.05) => ({ vx: (noise(x, y + eps, t) - noise(x, y - eps, t)) / (2 * eps), vy: -(noise(x + eps, y, t) - noise(x - eps, y, t)) / (2 * eps) }) }
+const apply = () => { if (!live) return; const L = live
+  L.rGain.gain.value = P.body; L.flickG.gain.value = P.flick
+  L.sGain.gain.value = P.chiri; L.sBpf.Q.value = P.chiriQ
+  L.midG.gain.value = P.mid * (1 - P.midGate * 0.85); L.midBpf.frequency.value = P.midF; L.midBpf.Q.value = P.midQ; L.midBpf2.frequency.value = P.midF * 1.6; L.midBpf2.Q.value = P.midQ; L.mid2G.gain.value = P.midQ2
+  L.midLfoF.frequency.value = P.midRate; L.midLfoG.gain.value = P.midDepth
+  L.fluG.gain.value = P.flu; L.fluBpf.frequency.value = P.fluF; L.fluBpf.Q.value = P.fluQ; L.fluLfoF.frequency.value = P.fluRate; L.fluLfoG.gain.value = P.fluDepth
+  L.midSrcW.gain.value = P.midBrown ? 0 : 1; L.midSrcB.gain.value = P.midBrown ? 1 : 0
+  const k = P.midSat; const curve = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; curve[i] = k > 0 ? Math.tanh(x * (1 + k * 6)) / Math.tanh(1 + k * 6) : x } L.midSat.curve = curve
+  master.gain.value = P.master }
+const start = () => { stop(); ctx = ctx || new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); master = track(ctx.createGain()); master.connect(ctx.destination)
+  const noise = mkNoise(2.5), longNoise = mkNoise(11.3), curl = curlNoise(42)
+  // 1. 炎本体
+  const rSrc = track(ctx.createBufferSource()); rSrc.buffer = noise; rSrc.loop = true
+  const rf1 = track(ctx.createBiquadFilter()), rf2 = track(ctx.createBiquadFilter()); rf1.type = rf2.type = 'lowpass'; rf1.frequency.value = rf2.frequency.value = 240; rf1.Q.value = 0.9; rf2.Q.value = 0.6
+  const baseG = track(ctx.createGain()); baseG.gain.value = 1
+  const flickSrc = track(ctx.createBufferSource()); flickSrc.buffer = longNoise; flickSrc.loop = true
+  const flickFilt = track(ctx.createBiquadFilter()); flickFilt.type = 'lowpass'; flickFilt.frequency.value = 10; flickFilt.Q.value = 0.5
+  const flickG = track(ctx.createGain()); flickSrc.connect(flickFilt); flickFilt.connect(flickG); flickG.connect(baseG.gain); flickSrc.start()
+  const rGain = track(ctx.createGain()); rSrc.connect(rf1); rf1.connect(rf2); rf2.connect(baseG); baseG.connect(rGain); rGain.connect(master); rSrc.start()
+  // 2. 炭のチリチリ（断続：遅い乱数で音量をゆらす。深さ 0 なら常時）
+  const sSrc = track(ctx.createBufferSource()); sSrc.buffer = noise; sSrc.loop = true
+  const sBpf = track(ctx.createBiquadFilter()); sBpf.type = 'bandpass'; sBpf.frequency.value = 1800
+  const sMod = track(ctx.createGain()); sMod.gain.value = 1
+  const sGain = track(ctx.createGain()); sSrc.connect(sBpf); sBpf.connect(sMod); sMod.connect(sGain); sGain.connect(master); sSrc.start()
+  // 3. メラメラ：中域バンドパス × 速い揺れ（LPF した雑音を LFO 代わりに）× 呼吸 vy
+  const brown = mkBrown(6.1)
+  const midSrc = track(ctx.createBufferSource()); midSrc.buffer = noise; midSrc.loop = true
+  const midSrcB0 = track(ctx.createBufferSource()); midSrcB0.buffer = brown; midSrcB0.loop = true
+  const midSrcW = track(ctx.createGain()), midSrcB = track(ctx.createGain()); midSrc.connect(midSrcW); midSrcB0.connect(midSrcB); midSrcB0.start()
+  const midBpf = track(ctx.createBiquadFilter()); midBpf.type = 'bandpass'
+  const midBpf2 = track(ctx.createBiquadFilter()); midBpf2.type = 'bandpass'; const mid2G = track(ctx.createGain())
+  const midSum = track(ctx.createGain()); midSum.gain.value = 1
+  const midSat = track(ctx.createWaveShaper()); midSat.oversample = '2x'
+  const midAm = track(ctx.createGain()); midAm.gain.value = 1
+  const midLfoSrc = track(ctx.createBufferSource()); midLfoSrc.buffer = longNoise; midLfoSrc.loop = true
+  const midLfoF = track(ctx.createBiquadFilter()); midLfoF.type = 'lowpass'; midLfoF.Q.value = 1.2
+  const midLfoNorm = track(ctx.createGain()); midLfoNorm.gain.value = 40   // LPF 後は振幅が小さいので持ち上げてから深さを掛ける
+  const midLfoG = track(ctx.createGain())
+  midLfoSrc.connect(midLfoF); midLfoF.connect(midLfoNorm); midLfoNorm.connect(midLfoG); midLfoG.connect(midAm.gain); midLfoSrc.start()
+  const midG = track(ctx.createGain())
+  midSrcW.connect(midBpf); midSrcB.connect(midBpf); midSrcW.connect(midBpf2); midSrcB.connect(midBpf2)
+  midBpf.connect(midSum); midBpf2.connect(mid2G); mid2G.connect(midSum); midSum.connect(midSat); midSat.connect(midAm); midAm.connect(midG); midG.connect(master); midSrc.start()
+  // 6. メラメラ B：白色ノイズ → 広いバンドパス → 乱数のはためき（別の長い雑音を LPF）で振幅変調 → 呼吸で強弱
+  const fluSrc = track(ctx.createBufferSource()); fluSrc.buffer = noise; fluSrc.loop = true
+  const fluBpf = track(ctx.createBiquadFilter()); fluBpf.type = 'bandpass'
+  const fluAm = track(ctx.createGain()); fluAm.gain.value = 1
+  const fluLfoSrc = track(ctx.createBufferSource()); fluLfoSrc.buffer = mkNoise(9.7); fluLfoSrc.loop = true
+  const fluLfoF = track(ctx.createBiquadFilter()); fluLfoF.type = 'lowpass'; fluLfoF.Q.value = 1.0
+  const fluLfoNorm = track(ctx.createGain()); fluLfoNorm.gain.value = 40
+  const fluLfoG = track(ctx.createGain())
+  fluLfoSrc.connect(fluLfoF); fluLfoF.connect(fluLfoNorm); fluLfoNorm.connect(fluLfoG); fluLfoG.connect(fluAm.gain); fluLfoSrc.start()
+  const fluBreath = track(ctx.createGain()); fluBreath.gain.value = 1
+  const fluG = track(ctx.createGain()); fluSrc.connect(fluBpf); fluBpf.connect(fluAm); fluAm.connect(fluBreath); fluBreath.connect(fluG); fluG.connect(master); fluSrc.start()
+  live = { rGain, flickG, sGain, sBpf, sMod, midG, midBpf, midBpf2, mid2G, midAm, midLfoF, midLfoG, midSrcW, midSrcB, midSat, fluG, fluBpf, fluLfoF, fluLfoG, fluBreath }; apply()
+  // スケジューラ（本体の bgmSchedule 相当）
+  let next = ctx.currentTime + 0.06, nextSnap = ctx.currentTime + 3, prevVy = 0
+  const tick = () => { const now = ctx.currentTime; if (next < now) next = now + 0.06
+    while (next < now + 1.5) { const t = next; next += 0.05
+      const { vx, vy } = curl(0, 0, t * 0.45 * 0.8); const tc = vy > prevVy ? 0.035 : 0.09; prevVy = vy
+      const f = Math.max(120, 240 + vy * 70); rf1.frequency.setTargetAtTime(f, t, tc); rf2.frequency.setTargetAtTime(f, t, tc)
+      baseG.gain.setTargetAtTime(Math.min(1.35, Math.max(0.2, 1 + vy * 0.22)), t, tc)
+      sBpf.frequency.setTargetAtTime(1800 + vx * 200, t, 0.06)
+      // 炭の断続：vx を 0〜1 に写して深さぶんだけ音量を上下（遅い乱数なので「赤く脈打つ」）
+      sMod.gain.setTargetAtTime(1 - P.chiriMod * (0.5 - 0.5 * vx), t, 0.12)
+      // メラメラも呼吸に乗せる（vy が上がると強く）
+      // ゲート：普段は (1-gate*0.85) まで引っ込め、vy が立ち上がると最大 1+gate*3 まで膨らむ（燃え上がり）
+      midAm.gain.setTargetAtTime(1 + Math.max(0, vy) * (0.5 + P.midGate * 3), t, tc)
+      fluBreath.gain.setTargetAtTime(Math.max(0.15, 1 + vy * P.fluBreath), t, tc)   // 呼吸が上がるとはためきも強く
+      // パリッ：短く高い乾いた弾け。たまに 3〜6 発が 150ms に固まる
+      const nTicks = Math.random() < P.burst ? 3 + Math.floor(Math.random() * 4) : (Math.random() < P.tickRate * 0.05 ? 1 : 0)
+      for (let i = 0; i < nTicks; i++) { const tt = t + (nTicks > 1 ? Math.random() * 0.15 : 0); const src = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), g = ctx.createGain(); src.buffer = noise; hp.type = 'bandpass'; hp.frequency.value = P.tickF * (0.7 + Math.random() * 0.6); hp.Q.value = 6
+        const d = P.tickDur / 1000 * (0.6 + Math.random() * 0.8); g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(P.tickLvl * (0.5 + Math.random() * 0.5), tt + 0.0007); g.gain.exponentialRampToValueAtTime(0.0001, tt + d)
+        src.connect(hp); hp.connect(g); const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null; if (p) { p.pan.value = (Math.random() * 2 - 1) * 0.7; g.connect(p); p.connect(master) } else g.connect(master); src.start(tt); src.stop(tt + d + 0.01) }
+      const prob = P.crack + Math.max(0, vy) * 0.28
+      if (Math.random() < prob) { const src = ctx.createBufferSource(), bf = ctx.createBiquadFilter(), g = ctx.createGain(); src.buffer = noise; bf.type = 'bandpass'; bf.frequency.value = 1200 + Math.random() * 2000; bf.Q.value = 4
+        const dur = 0.0154 + Math.random() * 0.006; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.7, t + 0.0015); g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+        src.connect(bf); bf.connect(g); const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null; if (p) { p.pan.value = Math.max(-0.95, Math.min(0.95, (Math.random() * 2 - 1) * 0.5 + vx * 0.75)); g.connect(p); p.connect(master) } else g.connect(master); src.start(t); src.stop(t + dur + 0.01) }
+      if (t > nextSnap) { nextSnap = t + 10.5 + Math.random() * 10.5; const pSrc = ctx.createBufferSource(), pF = ctx.createBiquadFilter(), pG = ctx.createGain(); pSrc.buffer = noise; pF.type = 'bandpass'; pF.frequency.value = 1000; pF.Q.value = 4.5
+        pG.gain.setValueAtTime(0.0001, t); pG.gain.linearRampToValueAtTime(0.63, t + 0.002); pG.gain.exponentialRampToValueAtTime(0.0001, t + 0.035); pSrc.connect(pF); pF.connect(pG); pG.connect(master); pSrc.start(t); pSrc.stop(t + 0.05)
+        const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(55, t + 0.045); og.gain.setValueAtTime(0.42, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.05); o.connect(og); og.connect(master); o.start(t); o.stop(t + 0.06) } } }
+  tick(); timers.push(setInterval(tick, 400)); $('st').textContent = '再生中'
+  $('log').textContent = '値を決めたら、この行をそのまま送ってください：\n' + JSON.stringify(P) }
+const stop = () => { timers.forEach(clearInterval); timers = []; nodes.forEach(n => { try { n.stop && n.stop() } catch {} try { n.disconnect() } catch {} }); nodes = []; live = null; $('st').textContent = '' }
+$('go').onclick = start; $('stop').onclick = stop
+// ?offline=1&preset=old|new：OfflineAudioContext で 20 秒描画して実効値とピークを出す（音量の新旧比較用）
+window.renderPreset = async (preset, sec = 20) => {
+  const OLD = {body:0.396,flick:3,chiri:0.052,chiriQ:1.8,chiriMod:0,mid:0,midBrown:1,midF:320,midQ:4,midQ2:0.5,midRate:4,midDepth:0.9,midSat:0,midGate:0,flu:0,fluF:1500,fluQ:0.7,fluRate:8,fluDepth:1.2,fluBreath:1.5,tickRate:0,tickLvl:0,tickF:2800,tickDur:5,burst:0,crack:0.15,master:1}
+  const NEW = {body:0.04,flick:5.3,chiri:0.012,chiriQ:3,chiriMod:0.2,mid:0.1,midBrown:1,midF:320,midQ:4.3,midQ2:0.45,midRate:1.5,midDepth:0.55,midSat:0.65,midGate:0.6,flu:0.025,fluF:750,fluQ:1.7,fluRate:14,fluDepth:0.65,fluBreath:1.4,tickRate:3.5,tickLvl:0.42,tickF:2800,tickDur:5,burst:0.08,crack:0.07,master:1}
+  Object.assign(P, preset === 'old' ? OLD : preset === 'new' ? NEW : preset)
+  ctx = new OfflineAudioContext(2, 44100 * sec, 44100)
+  nodes = []; timers = []; live = null
+  // start() を流用：setInterval は動かないので、tick を手で回す
+  const origSetInterval = window.setInterval; let tickFn = null
+  window.setInterval = (fn) => { tickFn = fn; return 0 }
+  start(); window.setInterval = origSetInterval
+  // 先読み 1.5 秒ずつ進める：currentTime は描画で進むので、startRendering の前にまとめて予約する
+  // → tick は currentTime を見るため、代わりに next を強制的に進める：内部の next は閉じているので tick を時間分だけ呼ぶ
+  //   （tick は now=0 のまま 1.5 秒ぶんしか予約しない）→ 描画を区切って suspend しながら呼ぶ
+  for (let t = 0; t < sec; t += 1.0) ctx.suspend(t).then(() => { tickFn(); ctx.resume() })
+  const buf = await ctx.startRendering()
+  const a = buf.getChannelData(0).subarray(44100 * 2); let s2 = 0, mx = 0; for (const v of a) { s2 += v * v; mx = Math.max(mx, Math.abs(v)) }
+  return { preset, rms: +Math.sqrt(s2 / a.length).toFixed(4), peak: +mx.toFixed(3) }
+}
+document.querySelectorAll('input[type=range]').forEach(i => i.addEventListener('input', () => { if (live) $('log').textContent = '値を決めたら、この行をそのまま送ってください：\n' + JSON.stringify(P) }))
+</script>
