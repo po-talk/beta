@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.58
+  ぽっと通話〈実験版〉 v0.14.59
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1340,7 +1340,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.58'
+const APP_VERSION = 'v0.14.59'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2756,8 +2756,13 @@ const bgmBonfire = seed => {
   // 二段フレア：JS 依存ゼロの audio-rate フリッカー（~10Hz LPF 微小ノイズを変調加算し炎の表面のチラつきを再現）
   // ★ゲインの根拠（2026-09-27・OfflineAudioContext で実測）：白色ノイズ（実効値 0.577）を 10Hz の LPF に通すと実効値 0.017・
   //   ピーク 0.053 まで落ちる。当初の 0.06 では変調が ±0.1%（無音同然）。3.0 で実効値 ±5%・ピーク ±16% の揺れになる
+  // ★フリッカーは**専用の長いバッファ**（11.3 秒・2.5 の倍数を避ける）：本体と同じ 2.5 秒ループを 10Hz の LPF に通すと滑らかな波形が
+  //   2.5 秒ごとに同じ形で繰り返され、0.4Hz の周期的なうねり（ウワンウワン）になる（レビュー指摘・2026-09-27）。0.2Hz のハイパスでは
+  //   直らない（繰り返し成分は 0.4Hz とその倍数＝素通り）。周期を 11.3 秒（0.09Hz）にし、上に乗る呼吸のゆらぎと位相がずれ続けるようにする。
+  //   メモリ約 2MB・生成は数ミリ秒。本体の 2.5 秒ループ（240Hz 帯の広帯域雑音）は v0.14.28 から実稼働で問題なしなので触らない
+  const flickNoise = bgmNoise(ctx, 11.3)
   const flickSrc = bgmTrack(ctx.createBufferSource())
-  flickSrc.buffer = noise; flickSrc.loop = true
+  flickSrc.buffer = flickNoise; flickSrc.loop = true
   const flickFilt = bgmTrack(ctx.createBiquadFilter())
   flickFilt.type = 'lowpass'; flickFilt.frequency.value = 10; flickFilt.Q.value = 0.5
   const flickG = bgmTrack(ctx.createGain())
