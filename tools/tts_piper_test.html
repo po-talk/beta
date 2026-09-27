@@ -326,6 +326,7 @@
         }
       });
 
+      window.__tts = tts;   // 調査用
       const elapsed = ((performance.now() - start) / 1000).toFixed(2);
       $('initTime').textContent = `${elapsed} 秒`;
       $('engineStatus').textContent = '準備完了 ✅';
@@ -358,11 +359,36 @@
     try {
       // speakerEmbedding は渡さない：ゼロベクトルを「声の指定」として渡すと（mask=1）声が崩れる。
       // 既定の声にするには mask=0 が要り、それは上の patchOrt が入れる
-      lastAudioResult = await tts.synthesize(text, {
-        language: 'ja',
-        lengthScale: 1.4, // MB-iSTFT版の自然な発話速度推奨値(1.4〜1.5)
-        noiseScale: 0.667
-      });
+      // ?mixed=1：英字の区間を英語の音素で読む（piper-plus の segmentText で ja／en に分け、区間ごとに合成して PCM をつなぐ）。
+      // 大文字だけの略語（URL・WebRTC など）は日本語側に残してアルファベット読みにする（英単語として読むと崩れる）
+      const mixed = new URLSearchParams(location.search).get('mixed') === '1';
+      // 分割は自前（piper-plus の CompositePhonemizer には segmentText が無い）：英字の連なり（空白・アポストロフィ・ハイフン込み）を en、残りを ja
+      const segmentText = t => { const out = []; const re = /[A-Za-z][A-Za-z'’\-]*(?:\s+[A-Za-z][A-Za-z'’\-]*)*/g; let last = 0, m;
+        while ((m = re.exec(t))) { if (m.index > last) out.push({ language: 'ja', text: t.slice(last, m.index) }); out.push({ language: 'en', text: m[0] }); last = m.index + m[0].length; }
+        if (last < t.length) out.push({ language: 'ja', text: t.slice(last) }); return out; };
+      if (mixed) {
+        const segs = segmentText(text);
+        log('言語分割: ' + segs.map(s => s.language + ':' + JSON.stringify(s.text)).join(' | '));
+        const chunks = []; let sr = 22050;
+        for (const seg of segs) {
+          if (!seg.text.trim()) continue;
+          const acronym = /^[A-Z0-9\s.]{2,8}$/.test(seg.text.trim());
+          const lang = seg.language === 'en' && !acronym ? 'en' : 'ja';
+          const r = await tts.synthesize(seg.text, { language: lang, lengthScale: 1.4, noiseScale: 0.667 });
+          chunks.push(r.samples); sr = r.sampleRate || sr;
+          chunks.push(new Float32Array(Math.floor(sr * 0.08)));   // 区間の間に 80ms の無音
+        }
+        const n = chunks.reduce((a, c) => a + c.length, 0); const all = new Float32Array(n); let o = 0;
+        for (const c of chunks) { all.set(c, o); o += c.length; }
+        const buf = new AudioBuffer({ length: n, sampleRate: sr, numberOfChannels: 1 }); buf.copyToChannel(all, 0);
+        lastAudioResult = { samples: all, sampleRate: sr, duration: n / sr, play: () => new Promise(res => { const c = new (window.AudioContext || window.webkitAudioContext)(); const src = c.createBufferSource(); src.buffer = buf; src.connect(c.destination); src.onended = res; src.start(); }) };
+      } else {
+        lastAudioResult = await tts.synthesize(text, {
+          language: 'ja',
+          lengthScale: 1.4, // MB-iSTFT版の自然な発話速度推奨値(1.4〜1.5)
+          noiseScale: 0.667
+        });
+      }
       const elapsedMs = performance.now() - start;
       const audioDuration = lastAudioResult.duration || (lastAudioResult.samples.length / lastAudioResult.sampleRate);
       const rtf = ((elapsedMs / 1000) / audioDuration).toFixed(2);
