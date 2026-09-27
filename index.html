@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.59
+  ぽっと通話〈実験版〉 v0.14.60
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1340,7 +1340,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.59'
+const APP_VERSION = 'v0.14.60'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3344,6 +3344,52 @@ const loadTts = () => {
 //   ・同じ人のひとことが続くときは名前を省く（TTS_NAME_AGAIN_MS 以上あいたら、また読む）
 //   ・名前に記号があればその手前で切る（「qramo(クラモ)」→「qramo」・「名前｜読み方」→「名前」）。読み方やおまけ情報を名前に書く人がいて長い
 //   ・長すぎる名前は TTS_NAME_MAX 文字で切る。ー（長音）は切らない
+// ─ 英単語のカタカナ辞書（v0.14.60）─ 日本語の読み仮名辞書（NAIST-JDIC）に載る英単語（world・code・OK…）はカタカナで読めるが、
+// 載らない語（hello・WebRTC…）は 1 文字ずつのアルファベット読みに落ちる。ブラウザ版 piper-plus の英語 G2P は文字をそのまま音素にする
+// 簡易実装で使えない（2026-09-27 に音素で確認）ので、合成の前にここで置き換える。読み上げがオンのときだけ働く純粋な文字列置換。
+// ・キーは小文字。複数語（thank you）は単語ごとより先に引く（最長 3 語）。大文字小文字は無視。辞書にない語はそのまま（略語はアルファベット読み）
+// ・投稿者の名前にも通す（ttsName）。増やすときはここに 1 行足すだけ。掲示板「英単語募集」で集まった語を順次追加する
+const TTS_KATAKANA = {
+  // 名前・このアプリ
+  qramo: 'クラモ', potalk: 'ポトーク', 'po-talk': 'ポトーク', tsukuyomi: 'ツクヨミ', greeter: 'グリーター', echo: 'エコー',
+  // 技術・サービス
+  webrtc: 'ウェブアールティーシー', wifi: 'ワイファイ', 'wi-fi': 'ワイファイ', bluetooth: 'ブルートゥース', iphone: 'アイフォン', ipad: 'アイパッド',
+  android: 'アンドロイド', mac: 'マック', macbook: 'マックブック', windows: 'ウィンドウズ', linux: 'リナックス', chrome: 'クローム', safari: 'サファリ',
+  firefox: 'ファイアフォックス', edge: 'エッジ', youtube: 'ユーチューブ', twitter: 'ツイッター', discord: 'ディスコード', line: 'ライン',
+  instagram: 'インスタグラム', tiktok: 'ティックトック', github: 'ギットハブ', google: 'グーグル', apple: 'アップル', amazon: 'アマゾン',
+  netflix: 'ネットフリックス', spotify: 'スポティファイ', zoom: 'ズーム', slack: 'スラック', nostr: 'ノスター', cloudflare: 'クラウドフレア',
+  claude: 'クロード', chatgpt: 'チャットジーピーティー', openai: 'オープンエーアイ', gemini: 'ジェミニ', copilot: 'コパイロット',
+  vtuber: 'ブイチューバー', javascript: 'ジャバスクリプト', python: 'パイソン', wasm: 'ワズム', json: 'ジェイソン', nvidia: 'エヌビディア', intel: 'インテル',
+  app: 'アプリ', web: 'ウェブ', mic: 'マイク', mute: 'ミュート', bug: 'バグ', update: 'アップデート', beta: 'ベータ', test: 'テスト', chat: 'チャット',
+  room: 'ルーム', host: 'ホスト', guest: 'ゲスト', listener: 'リスナー', speaker: 'スピーカー', radio: 'ラジオ', comment: 'コメント', voice: 'ボイス',
+  live: 'ライブ', music: 'ミュージック', game: 'ゲーム', play: 'プレイ', start: 'スタート', stop: 'ストップ', pc: 'ピーシー', meta: 'メタ',
+  // 挨拶・相づち
+  hello: 'ハロー', hi: 'ハイ', hey: 'ヘイ', yo: 'ヨー', thanks: 'サンクス', 'thank you': 'サンキュー', sorry: 'ソーリー', please: 'プリーズ',
+  yes: 'イエス', no: 'ノー', ok: 'オーケー', okay: 'オーケー', good: 'グッド', nice: 'ナイス', cool: 'クール', wow: 'ワオ', lol: 'ワラ',
+  gg: 'ジージー', 'good morning': 'グッドモーニング', 'good night': 'グッドナイト', 'good job': 'グッジョブ', 'see you': 'シーユー',
+  bye: 'バイ', 'bye bye': 'バイバイ', welcome: 'ウェルカム', love: 'ラブ', happy: 'ハッピー', 'happy birthday': 'ハッピーバースデー',
+  cute: 'キュート', sweet: 'スイート', super: 'スーパー', best: 'ベスト', new: 'ニュー', free: 'フリー', big: 'ビッグ', first: 'ファースト',
+  today: 'トゥデイ', tonight: 'トゥナイト', night: 'ナイト', morning: 'モーニング', weekend: 'ウィークエンド', coffee: 'コーヒー', tea: 'ティー',
+  beer: 'ビア', cat: 'キャット', dog: 'ドッグ', time: 'タイム', world: 'ワールド', 'hello world': 'ハローワールド',
+  // 短い英単語（文中で出やすいもの）
+  and: 'アンド', or: 'オア', the: 'ザ', i: 'アイ', you: 'ユー', me: 'ミー', we: 'ウィー', it: 'イット', is: 'イズ', my: 'マイ', your: 'ユア',
+  this: 'ディス', that: 'ザット', what: 'ワット', why: 'ホワイ', how: 'ハウ', go: 'ゴー', up: 'アップ', down: 'ダウン', in: 'イン', out: 'アウト',
+  on: 'オン', off: 'オフ', end: 'エンド'
+}
+const TTS_KATAKANA_MAX_WORDS = 3
+// 英字の連なりを単語に分け、最長 3 語から順に辞書を引く。辞書にない語はそのまま返す（大文字の略語はアルファベット読みが妥当）
+const ttsKatakana = text => text.replace(/[A-Za-z][A-Za-z0-9'’\-]*(?:\s+[A-Za-z][A-Za-z0-9'’\-]*)*/g, run => {
+  const words = run.split(/\s+/), out = []
+  for (let i = 0; i < words.length;) {
+    let hit = null, n = 0
+    for (let k = Math.min(TTS_KATAKANA_MAX_WORDS, words.length - i); k >= 1; k--) {
+      const key = words.slice(i, i + k).join(' ').toLowerCase()
+      if (Object.prototype.hasOwnProperty.call(TTS_KATAKANA, key)) { hit = TTS_KATAKANA[key]; n = k; break }
+    }
+    if (hit) { out.push(hit); i += n } else { out.push(words[i]); i += 1 }
+  }
+  return out.join(' ')
+})
 const TTS_NONAME_KEY = 'pot-call-tts-noname'
 let ttsNoName = lsGet(TTS_NONAME_KEY) === '1'   // 名前を読まない（保存する・読み方の好み）
 const TTS_NAME_AGAIN_MS = 60000
@@ -3352,10 +3398,10 @@ const TTS_NAME_CUT = /[\s（(【\[「『〔｜|／/・:：@＠#＃〜~,、]/u
 const ttsName = uid => {
   const raw = ((uid === 'self' ? profile : call.profiles.get(uid) || {}).name || 'ゲスト').replace(TTS_STRIP, '').trim()
   const cut = raw.split(TTS_NAME_CUT)[0].trim()
-  return [...(cut || raw || 'ゲスト')].slice(0, TTS_NAME_MAX).join('')
+  return ttsKatakana([...(cut || raw || 'ゲスト')].slice(0, TTS_NAME_MAX).join(''))   // 名前も辞書に通す（qramo → クラモ）
 }
 const ttsText = (uid, text) => {
-  const t = text.replace(/https?:\/\/\S+|www\.\S+/gi, 'URL省略').replace(TTS_STRIP, '').replace(/\s+/g, ' ').trim()
+  const t = ttsKatakana(text.replace(/https?:\/\/\S+|www\.\S+/gi, 'URL省略').replace(TTS_STRIP, '')).replace(/\s+/g, ' ').trim()
   if (!t) return ''
   const now = Date.now()
   const again = uid !== call.ttsLastUid || now - call.ttsLastAt > TTS_NAME_AGAIN_MS
