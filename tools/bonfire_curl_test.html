@@ -508,11 +508,11 @@
       d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.05
       b6 = white * 0.115926
     }
-    // 末尾512サンプルのクロスフェード（クリック防止）
+    // 末尾512サンプルのクロスフェード（ループ境界のクリック防止）
     const xlen = Math.min(512, Math.floor(len / 4))
     for (let i = 0; i < xlen; i++) {
       const w = i / xlen
-      d[i] = d[i] * w + d[len - xlen + i] * (1 - w)
+      d[len - xlen + i] = d[len - xlen + i] * (1 - w) + d[i] * w
     }
     return buf
   }

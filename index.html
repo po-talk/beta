@@ -2736,19 +2736,30 @@ const bgmCurlNoise = seed => {
   }
 }
 
-// 🔥 焚き火：カールノイズ流体ゆらぎ（炎の呼吸・気流の火の粉パン・炭のチリチリ）＋薪の爆ぜ（v0.14.57）
+// 🔥 焚き火：カールノイズ流体ゆらぎ（炎の呼吸・気流の火の粉パン・炭のチリチリ）＋二段フレア（v0.14.57）
 const bgmBonfire = seed => {
   const ctx = ctx0()
   const noise = bgmNoise(ctx, 2.5)   // 2.5秒・末尾クロスフェード済み（ループ境界の周期クリック防止）
   const curl = bgmCurlNoise(seed)
 
-  // 1. 炎のメラメラ燃焼（低域ボディ＋カールノイズによる呼吸ゆらぎ）
+  // 1. 炎のメラメラ燃焼（低域ボディ＋カールノイズによる呼吸ゆらぎ＋audio-rate微細フリッカー）
   const rSrc = bgmTrack(ctx.createBufferSource())
   rSrc.buffer = noise; rSrc.loop = true
   const rf1 = bgmTrack(ctx.createBiquadFilter()), rf2 = bgmTrack(ctx.createBiquadFilter())
   rf1.type = 'lowpass'; rf1.frequency.value = 240; rf1.Q.value = 0.9
   rf2.type = 'lowpass'; rf2.frequency.value = 240; rf2.Q.value = 0.6
   const baseG = bgmTrack(ctx.createGain()); baseG.gain.value = 1.0
+
+  // 二段フレア：JS 依存ゼロの audio-rate フリッカー（~10Hz LPF 微小ノイズを変調加算し炎の表面のチラつきを再現）
+  const flickSrc = bgmTrack(ctx.createBufferSource())
+  flickSrc.buffer = noise; flickSrc.loop = true
+  const flickFilt = bgmTrack(ctx.createBiquadFilter())
+  flickFilt.type = 'lowpass'; flickFilt.frequency.value = 10; flickFilt.Q.value = 0.5
+  const flickG = bgmTrack(ctx.createGain())
+  flickG.gain.value = 0.06
+  flickSrc.connect(flickFilt); flickFilt.connect(flickG); flickG.connect(baseG.gain)
+  flickSrc.start()
+
   const rGain = bgmTrack(ctx.createGain())
   rGain.gain.value = 0.396
   rSrc.connect(rf1); rf1.connect(rf2); rf2.connect(baseG); baseG.connect(rGain); rGain.connect(bgm.gain)
@@ -2764,24 +2775,30 @@ const bgmBonfire = seed => {
   sSrc.connect(sBpf); sBpf.connect(sGain); sGain.connect(bgm.gain)
   sSrc.start()
 
-  // 3. 火の粉パチパチ ＆ 薪の爆ぜ ＆ カールノイズ流体変調（50ms 周期）
+  // 3. 火の粉パチパチ ＆ 薪の爆ぜ ＆ カールノイズ流体変調（bgmSchedule 先読み絶対時刻同期）
   let nextSnap = ctx.currentTime + 3.0
-  let flowTime = 0
+  let prevVy = 0
   bgmSchedule(0.05, (step, t) => {
-    flowTime += 0.05 * 0.45
+    // flowTime は tick 累積ではなく絶対音響時計 t に同期（iOS/スロットリング耐性）
+    const flowTime = t * 0.45
     const { vx, vy } = curl(0, 0, flowTime * 0.8)
+
+    // 非対称ダイナミクス：炎は急に煽られ（tc=0.035）、緩やかに収まる（tc=0.09）
+    const tc = vy > prevVy ? 0.035 : 0.09
+    prevVy = vy
 
     // 炎の呼吸：上昇気流 vy に合わせて低域フィルターと音量を連動変調
     const targetFreq = Math.max(120, 240 + vy * 70)
-    rf1.frequency.setTargetAtTime(targetFreq, t, 0.05)
-    rf2.frequency.setTargetAtTime(targetFreq, t, 0.05)
-    baseG.gain.setTargetAtTime(Math.max(0.2, 1.0 + vy * 0.22), t, 0.05)
+    rf1.frequency.setTargetAtTime(targetFreq, t, tc)
+    rf2.frequency.setTargetAtTime(targetFreq, t, tc)
+    baseG.gain.setTargetAtTime(Math.max(0.2, 1.0 + vy * 0.22), t, tc)
 
     // 炭のチリチリ：横風流速 vx に合わせてフィルター周波数をわずかにフェージング
     sBpf.frequency.setTargetAtTime(1800 + vx * 200, t, 0.06)
 
-    // 火の粉パチパチ（気流に乗って左右に揺れるステレオ定位）
-    if (Math.random() < 0.25) {
+    // 火の粉パチパチ（気流 vy が立ち上がると発生率が自然にアップ＋気流に乗るステレオ定位）
+    const crackleProb = 0.15 + Math.max(0, vy) * 0.28
+    if (Math.random() < crackleProb) {
       const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain()
       src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1200 + Math.random() * 2000; f.Q.value = 4
       const dur = 0.007 + 0.0084 + Math.random() * 0.006
