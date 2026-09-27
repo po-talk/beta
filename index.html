@@ -347,18 +347,26 @@
   .collapsible.collapsed{ grid-template-rows:0fr; opacity:0 }
   @media (prefers-reduced-motion:reduce){ .collapsible{ transition:none } }
   .profile{ margin-top:4px }
-  /* 「部屋を作る」トグル。プロフィールと同じ見た目にそろえる（同じ役割の行なので） */
-  /* ★枠（カード）にしないこと。**開いたときの「部屋名」ラベルと同じ素のテキスト行**にする
-     （利用者の指定・2026-09-12）。プロフィールは身元を示すカードなので枠があってよいが、
-     こちらは「畳んである見出し」なので、枠があると同じ重さの選択肢に見えてしまう */
+  /* 「部屋を作る」トグル。畳んでいる間は押しやすい行として少し目立たせ（v0.14.55）、
+     開いたときは枠を外して素の「部屋名」ラベルに変身させる（プロフィールの summary と同じ作法） */
   .create{ margin-top:12px }
   .create > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:6px;
     padding:4px 2px; font-size:13px; color:var(--sub) }
   .create > summary::-webkit-details-marker{ display:none }
-  .cr-ic{ font-size:15px; line-height:1 }
-  .cr-label{ font-weight:700; font-size:13.5px; color:var(--chip-fg) }
-  .cr-arrow{ font-size:11px; color:var(--link) }   /* 文字のすぐ後ろ（右端へ飛ばさない） */
+  .cr-ic{ font-size:16px; line-height:1 }
+  .cr-label{ font-weight:700; font-size:14px; color:var(--chip-fg) }
+  .cr-arrow{ font-size:11px; color:var(--link) }
   .create[open] .cr-arrow{ transform:rotate(90deg) }
+  /* 畳んでいるときの見た目：押しやすい角丸の行として少し目立たせる */
+  .create:not([open]) > summary{
+    padding:9px 12px; border-radius:10px;
+    background:var(--chip); border:1px solid var(--border-soft);
+    transition:background-color .2s ease, border-color .2s ease;
+  }
+  .create:not([open]) > summary:hover{
+    background:var(--chip-hover); border-color:var(--border);
+  }
+  .create:not([open]) .cr-arrow{ margin-left:auto }
   /* 開いている間は見出しを「部屋名」ラベルに変身させる（プロフィールの summary と同じ作法）。
      枠を外して入力欄に繋げる＝独立した行を作らず、ラベルとして一体に見せる */
   .cr-open-label{ display:none; font-size:13px; color:var(--sub) }
@@ -966,7 +974,7 @@
   </div>
       <!-- 参加ボタンもこの中。**部屋名と対で使うもの**なので、畳んだときに一緒に消えるのが素直
            （ロビーから入るときはこのボタンを通らない） -->
-  <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span id="joinLbl">参加する</span></button>
+  <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span id="joinLbl">部屋を作る</span></button>
   <!-- 入口の案内（リンクで来た人だけ・v0.12.0）。ロビーでその部屋が開いているかを見てから入る。
        開いていなければ「お休み中」と案内してロビーへ誘導し、作る意思があれば「この名前で新しく開く」。 -->
   <div id="entryNote" class="entry-note" hidden>
@@ -1819,8 +1827,16 @@ const syncKindRow = () => {
   const viaLink = !!roomPk(h) && roomInput.value.trim() === hashName()
   const foreign = !!pendingPk && !ownerKeyByFp(pendingPk)
   kindRow.hidden = !!call.joinedId || foreign || viaLink
-  // 他人の配信部屋に入るときはボタンの文言で役割を先に伝える（マイクは使わない・聞くだけ）
-  $('joinLbl').textContent = entry.state === 'checking' ? 'この部屋を探しています…' : foreign ? 'リスナーとして参加する' : '参加する'
+  // 部屋を新しく作る場合（URLに部屋が無い・名前を打ち替えた・自分の配信部屋）は「部屋を作る」、
+  // 共有リンクで既存の部屋に入る場合は「参加する」（他人の配信部屋はリスナー明示）
+  const isCreate = !h || roomInput.value.trim() !== hashName() || (pendingPk && !!ownerKeyByFp(pendingPk))
+  $('joinLbl').textContent = entry.state === 'checking'
+    ? 'この部屋を探しています…'
+    : foreign
+      ? 'リスナーとして参加する'
+      : isCreate
+        ? '部屋を作る'
+        : '参加する'
   kindBc.parentElement.classList.toggle('sel', kindBc.checked)
   kindChat.parentElement.classList.toggle('sel', kindChat.checked)
 }
