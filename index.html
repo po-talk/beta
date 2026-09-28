@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.61
+  ぽっと通話〈実験版〉 v0.15.0
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -762,6 +762,10 @@
   .room-people{ margin-top:8px; display:flex; flex-wrap:wrap; gap:6px }
   .rp{ display:inline-flex; align-items:center; gap:4px; background:var(--log); padding:3px 9px; border-radius:999px; font-size:13px; color:var(--body) }
   .rp.mut{ opacity:.6 }
+  /* ロビーのカードに出す つくよみちゃん の顔。部屋の中の仮想行（.m-face）と同じ丸い切り抜きを、
+     隣の絵文字と同じ大きさで置く（.rp は 13px なので 1.15em ≒ 15px。丸い顔は絵文字より小さく見えるため少し大きめ）。
+     規約上「自作アプリ内の顔グラフィック」は可・アプリアイコンやファビコンには使わない（THIRD_PARTY_NOTICES.md） */
+  .rp img.rp-face{ width:1.15em; height:1.15em; border-radius:50%; object-fit:cover; display:inline-block }
   /* ロビーチップのミュート印＝参加者リストと同じ朱丸バッジの縮小版（15px） */
   .rp-mute{ flex:none; width:15px; height:15px; border-radius:50%; background:var(--red);
     display:inline-flex; align-items:center; justify-content:center; margin-left:1px }
@@ -1340,7 +1344,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.61'
+const APP_VERSION = 'v0.15.0'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3560,6 +3564,10 @@ const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsStart(false) }   // つ�
   box.checked = sndTts
   box.onchange = () => {
     sndTts = box.checked; syncTtsRow()   // 保存しない（上の★）
+    // ロビーの印（つくよみちゃんのチップ）を待たせない。ミュートと同じ扱い＝切り替えた瞬間に在室を出し直す
+    // （置かないと次のハートビートまで最大 5 秒ずれる）。エンジンの読み込みを待たずに出るのは意図どおりで、
+    // ロビーの印は「オンにした」という**予告**（実際に音が届いているかは部屋の中の仮想行が示す）。
+    sendHeartbeat()
     if (!sndTts) { stopSpeech(); ttsSetOn(false); return }
     ttsStart()
   }
@@ -5473,8 +5481,10 @@ const lobbyRenderFlush = { t: null }   // 間引いた分をまとめて描き�
 const renderLobbyThrottled = peerId => throttleBy(lobbyRenderSeen, peerId, LOBBY_RENDER_MS, lobbyRenderFlush, renderLobby)
 const presences = new Map()  // 発信者peerId → {room, name, emoji, muted, stage, ts}
 
+// 読み上げがオンか＝**配信部屋のオーナーのときだけ**真。ロビーに出す印（tt）と自分ぶんの在室で共用する
+const ttsOwnerOn = () => !!(call.bcast && call.ownerKey && sndTts)
 const heartbeatPayload = () => call.joinedId
-  ? { room: call.joinedId, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey), name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), elapsed: mySeconds(), talk: talkLevel }
+  ? { room: call.joinedId, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey), name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), elapsed: mySeconds(), talk: talkLevel, tt: ttsOwnerOn() }
   : { room: null }
 // ───────── 在室の Nostr 直publish（段階A：既存ロビーに併走で足すだけ） ─────────
 // 外部（ブログのバナー等）が「この部屋が今ライブか」を、メッシュに入らず読み取り専用で知れるように、
@@ -5686,8 +5696,8 @@ const renderLobby = () => {
     if (!a) byRoom.set(room, a = [])
     a.push(p)
   }
-  presences.forEach(v => push(v.room, { name: v.name, emoji: v.emoji, muted: v.muted, stage: v.stage, elapsed: v.elapsed, ts: v.ts, talk: v.talk, rn: v.rn, tag: v.tag, tagBy: v.tagBy, bo: v.bo }))
-  if (call.joinedId) push(call.joinedId, { name: profile.name, emoji: profile.emoji, muted: call.muted, stage: stageOf(), elapsed: mySeconds(), ts: Date.now(), talk: talkLevel, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey) })
+  presences.forEach(v => push(v.room, { name: v.name, emoji: v.emoji, muted: v.muted, stage: v.stage, elapsed: v.elapsed, ts: v.ts, talk: v.talk, rn: v.rn, tag: v.tag, tagBy: v.tagBy, bo: v.bo, tt: v.tt }))
+  if (call.joinedId) push(call.joinedId, { name: profile.name, emoji: profile.emoji, muted: call.muted, stage: stageOf(), elapsed: mySeconds(), ts: Date.now(), talk: talkLevel, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey), tt: ttsOwnerOn() })
   // ★配信部屋は**配信者がいるときだけ**一覧に出す（v0.14.0）。聞き役だけの部屋に新しい人が流れ込まない
   //   （配信者が去った部屋は下の「配信の終わり」で片づく）。告知そのものは全員が送る＝人数は出る
   byRoom.forEach((people, room) => { if (isBcRoom(room) && !people.some(p => p.bo)) byRoom.delete(room) })
@@ -5769,6 +5779,20 @@ const renderLobby = () => {
       if (p.muted) { const b = document.createElement('span'); b.className = 'rp-mute'; b.innerHTML = MIC_OFF_SVG; rp.append(b) }
       ppl.append(rp)
     })
+    // 読み上げがオンの配信部屋には つくよみちゃん も出す（v0.15.0）。**people には入れない**＝
+    // 人ではないので人数にも満室判定にも数えない（部屋の中の仮想行と同じ約束・renderMembers 参照）。
+    // ロビーのこれは**予告**＝「この部屋は読み上げがオン」。実際に音が届いているかを示すのは
+    // 部屋の中の仮想行のほう（ttsFlowing）で、そちらは届くまで出ない。役割が違うので揃えない。
+    // tt は自己申告なので、配信部屋であることは room 側で確かめる（bo と同じ扱い）。
+    if (isBcRoom(room) && people.some(p => p.tt)) {
+      const rp = document.createElement('span'); rp.className = 'rp'
+      rp.title = 'この部屋はひとことの読み上げがオンです（声と顔：つくよみちゃん）'
+      const im = document.createElement('img'); im.className = 'rp-face'
+      im.src = 'img/tsukuyomi-128.png'; im.alt = ''; im.width = 22; im.height = 22   // alt は空＝すぐ隣に名前がある
+      const n = document.createElement('span'); n.textContent = 'つくよみ'
+      rp.append(im, n)
+      ppl.append(rp)
+    }
     btn.append(top); if (sub) btn.append(sub); btn.append(dur, ppl)
     btn.onclick = () => askRoom(room, lobbyName(room, people))
     list.append(btn)
@@ -5909,7 +5933,7 @@ const openLobby = async (again, status, soft = false) => {
         // ★capRoom ではなく capRoomId。**切り詰めてよいのは名前の部分だけ**で、全体を
         // 30文字で切ると配信部屋の指紋が欠け、タップしても誰にも会えない部屋になる。
         room: capRoomId(d.room), rn: capText(d.rn, ROOM_MAX), tag: capText(d.tag, ROOM_MAX), tagBy: capText(d.tagBy, 20), bo: !!d.bo, name: capText(d.name, 20),
-        emoji: capText(d.emoji || '🙂', 8), muted: !!d.muted,
+        emoji: capText(d.emoji || '🙂', 8), muted: !!d.muted, tt: !!d.tt,
         stage: capText(d.stage, 4), ts: Date.now(),
         // 相手が「その部屋に入ってからの秒数」。受信時刻(ts)を足して現在値に補正して使う。
         // 上限は自己申告の暴走ガード（改造クライアント対策）。常設部屋が何日も続くので 30日 に設定。
