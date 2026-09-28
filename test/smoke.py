@@ -1096,6 +1096,7 @@ def T49(r, a, b):
 def T55(r, a, b):
     """ひとことの読み上げ v2（v0.14.42）：配信部屋のオーナーだけに設定が出て、オンで見本を読み、リスナーのひとことを
     「名前、文面」で読む（URL は「URL省略」・絵文字は落ちる）。リスナー側は何も合成しない。オフで読まない。設定は保存しない（v0.14.50）。
+    ロビーのカードにも つくよみ のチップが出る（v0.15.0・人数には数えない・オフで消える）。
 
     ★T27 の直後・T27b（つなぎ直しを繰り返す）の前に走る（a＝配信者・b＝聞き役・どちらも通話中のまま）。
     実エンジン（100MB）は落とさず、INSTRUMENT の差し替え口 window.__potTts（偽エンジン）で判定する（__T.ttsTexts）。
@@ -1115,6 +1116,12 @@ def T55(r, a, b):
     two = b.wait_for("%s >= 2" % AUDIOS, timeout=SHORT + 10)
     vrow_a = a.eval("!!document.querySelector('#members .member.virtual')")
     face = b.eval("(() => { const i = document.querySelector('#members .member.virtual img.m-face'); return !!i && i.getAttribute('src') === 'img/tsukuyomi-128.png' })()")   # 顔グラフィック（v0.14.46）
+    # ロビーのカードにも つくよみ のチップが出る（v0.15.0）。配信者の在室の tt を見て描くので、聞き役の画面でも出る。
+    # 人数には数えない（つくよみを足して「3人」になっていないこと）
+    lobby_chip = b.wait_for("(() => { const c = document.querySelector('#lobbyList .room.here'); if (!c) return false;"
+                            " const i = c.querySelector('img.rp-face');"
+                            " return !!i && i.getAttribute('src') === 'img/tsukuyomi-128.png' && /つくよみ/.test(i.closest('.rp').textContent) })()", timeout=SHORT)
+    lobby_count = b.eval("(() => { const c = document.querySelector('#lobbyList .room.here'); return c ? c.querySelector('.room-count').textContent : '' })()").startswith('2人')
     n1 = a.eval("window.__T.ttsTexts.length")
     time.sleep(1.5)
     show_tab(b, 'chat')
@@ -1156,12 +1163,14 @@ def T55(r, a, b):
     off_quiet = shown and a.eval("window.__T.ttsTexts.length") == n2
     off_saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === null")   # v0.14.50：保存しない
     vrow_gone = b.wait_for("!document.querySelector('#members .member.virtual')", timeout=SHORT)   # オフの案内で仮想行が消える
+    chip_gone = b.wait_for("(() => { const c = document.querySelector('#lobbyList .room.here'); return !!c && !c.querySelector('img.rp-face') })()", timeout=SHORT)   # ロビーの印も消える（v0.15.0）
     show_tab(a, 'members'); show_tab(b, 'members')
     ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and face and arrived and shape and lit
-          and noname and noname2 and kana and listener_quiet and off_quiet and off_saved and vrow_gone)
-    r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
-            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 名前を読まないスイッチ=%s / カタカナ辞書=%s(%r) / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s'
-            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, noname2, kana, kana_text, listener_quiet, off_quiet, off_saved, vrow_gone))
+          and noname and noname2 and kana and listener_quiet and off_quiet and off_saved and vrow_gone
+          and lobby_chip and lobby_count and chip_gone)
+    r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・ロビーの印・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 名前を読まないスイッチ=%s / カタカナ辞書=%s(%r) / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s / ロビーの印=%s / 人数に数えない=%s / オフでロビーの印も消える=%s'
+            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, noname2, kana, kana_text, listener_quiet, off_quiet, off_saved, vrow_gone, lobby_chip, lobby_count, chip_gone))
 
 
 def T55b(r, a, b):
