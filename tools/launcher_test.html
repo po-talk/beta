@@ -24,6 +24,11 @@
     ② 別タブ指定               <a target="_blank">
     ③ script から              window.open(url, '_blank')
     ④ 別オリジン（potalk.app） ＝確実にスコープ外。これも駄目なら ①〜③ も望み薄
+    ⑤ x-safari-https://        ＝iOS の「Safari で開く」URL スキーム（効くかは版による）
+
+  ★2026-09-28 の実測：①〜④ は**すべてアプリ内ブラウザ**で開いた（Safari には出ない）。
+    → Web の手段で PWA から Safari に抜けるのは望み薄。残るのは ⑤ と、
+    「そもそも Safari でなくてよいのでは」という問い（下の「次に確かめること」）。
 
   部屋の一覧は本体と同じ仕組み（Trystero＋Nostr リレーの隠し部屋 `__lobby__`）を**読むだけ**。
   自分の在室は流さない（通話していないので）。サーバは増えない＝CLAUDE.md の枠内。
@@ -93,6 +98,16 @@
 <div class="panel" id="noroom" hidden>
   <p style="font-size:13px;margin:0">部屋が無いときでも試せるように、<strong>ダミーの行</strong>で開き方だけ確認できます。</p>
   <div class="ways" id="dummyWays"></div>
+</div>
+
+<h2>次に確かめること（こちらが本題かもしれません）</h2>
+<div class="panel">
+  <p style="font-size:13px;margin:0 0 6px"><strong>目的は「Safari を開くこと」ではなく「画面ロック中に声が途切れないこと」でした。</strong></p>
+  <p style="font-size:13px;margin:0">アプリ内ブラウザ（SFSafariViewController）は <strong>PWA とは別プロセス</strong>なので、
+  ロック中の挙動も Safari と同じかもしれません。もしそうなら、<strong>Safari に抜けられなくても構想は成立します</strong>。</p>
+  <p style="font-size:13px;margin:6px 0 0">試し方：この試作から部屋を開く → アプリ内ブラウザで通話に参加する →
+  <strong>画面をロックして 1〜2 分待つ</strong> → 声が続いているか。<br>
+  比べる相手は、同じことを ①本体の PWA の中でやった場合と、②ふつうの Safari タブでやった場合です。</p>
 </div>
 
 <h2>ログ</h2>
@@ -178,8 +193,13 @@ const ways = (id, name) => {
   const a4 = document.createElement('a'); a4.textContent = '④ 別オリジン(potalk.app)'
   a4.href = roomUrl(PROD_BASE, id, name)
   a4.onclick = () => log('④ 別オリジン:', name || id)
+  // ⑤ iOS の「Safari で開く」URL スキーム。https:// を x-safari-https:// に置き換えるだけ。
+  //    公式なものではなく、版によって効いたり効かなかったりする。①〜④ が全部アプリ内ブラウザだったので最後の望み。
+  const a5 = document.createElement('a'); a5.textContent = '⑤ x-safari-https://'
+  a5.href = roomUrl(PROD_BASE, id, name).replace(/^https:\/\//, 'x-safari-https://')
+  a5.onclick = () => log('⑤ x-safari スキーム:', name || id)
 
-  frag.append(a1, a2, b3, a4)
+  frag.append(a1, a2, b3, a4, a5)
   return frag
 }
 
