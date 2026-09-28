@@ -1122,6 +1122,9 @@ def T55(r, a, b):
                             " const i = c.querySelector('img.rp-face');"
                             " return !!i && i.getAttribute('src') === 'img/tsukuyomi-128.png' && /つくよみ/.test(i.closest('.rp').textContent) })()", timeout=SHORT)
     lobby_count = b.eval("(() => { const c = document.querySelector('#lobbyList .room.here'); return c ? c.querySelector('.room-count').textContent : '' })()").startswith('2人')
+    # 配信者自身の画面でも自分の部屋のカードに出る（自分の在室は renderLobby が合成して足す経路＝聞き役とは別）
+    lobby_chip_a = a.wait_for("(() => { const c = document.querySelector('#lobbyList .room.here'); if (!c) return false;"
+                              " const i = c.querySelector('img.rp-face'); return !!i && /つくよみ/.test(i.closest('.rp').textContent) })()", timeout=SHORT)
     n1 = a.eval("window.__T.ttsTexts.length")
     time.sleep(1.5)
     show_tab(b, 'chat')
@@ -1167,10 +1170,10 @@ def T55(r, a, b):
     show_tab(a, 'members'); show_tab(b, 'members')
     ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and face and arrived and shape and lit
           and noname and noname2 and kana and listener_quiet and off_quiet and off_saved and vrow_gone
-          and lobby_chip and lobby_count and chip_gone)
+          and lobby_chip and lobby_chip_a and lobby_count and chip_gone)
     r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・ロビーの印・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
-            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 名前を読まないスイッチ=%s / カタカナ辞書=%s(%r) / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s / ロビーの印=%s / 人数に数えない=%s / オフでロビーの印も消える=%s'
-            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, noname2, kana, kana_text, listener_quiet, off_quiet, off_saved, vrow_gone, lobby_chip, lobby_count, chip_gone))
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 名前を読まないスイッチ=%s / カタカナ辞書=%s(%r) / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s / ロビーの印(聞き役)=%s / ロビーの印(配信者)=%s / 人数に数えない=%s / オフでロビーの印も消える=%s'
+            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, noname2, kana, kana_text, listener_quiet, off_quiet, off_saved, vrow_gone, lobby_chip, lobby_chip_a, lobby_count, chip_gone))
 
 
 def T55b(r, a, b):
