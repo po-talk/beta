@@ -1600,6 +1600,18 @@ def T27(r, room):
     # 見張りでもある（受信側で部屋IDを丸ごと30文字に切ると指紋が欠け、タップしても誰にも会えない）
     c = r.open_tab()
     in_lobby = c.wait_for('%s.includes(%s)' % (LOBBY, js_str('📣 ' + name)), timeout=DISCOVER)
+    # ★配信部屋の聞き役はロビーに身元を出さない（v0.15.0）。**人数には入るがチップは出ない**。
+    #   ここは「表示していない」ではなく「送っていない」ことの見張り：名前を送っていれば誰でも読めてしまう。
+    #   a と b は同じブラウザなので profile（名前）が共有される＝名前では区別できない。**チップの本数**で見る。
+    card = ("[...document.querySelectorAll('#lobbyList .room')]"
+            ".find(e => e.textContent.includes(%s))" % js_str('📣 ' + name))
+    # ★順番が大事：**先に「2人」を待つ**。チップ1本は「オーナーぶんしか届いていない」段階でも真になるので、
+    #   先にチップを見ると聞き役の在室が届く前に通ってしまう（最初こう書いて取り違えた）。
+    anon_count = c.wait_for("(() => { const e = %s;"
+                            " return !!e && /^2人/.test(e.querySelector('.room-count').textContent) })()" % card,
+                            timeout=DISCOVER)
+    anon_chip = anon_count and c.eval(
+        "(() => { const e = %s; return !!e && e.querySelectorAll('.rp').length === 1 })()" % card)
     # 配信部屋は**タブが4つ**＝いちばん混む。狭い画面でも1行に収まること
     narrow = []
     for w in (390, 360, 320):
@@ -1607,10 +1619,11 @@ def T27(r, room):
         time.sleep(0.3)
         narrow.append(a.eval(TAB_FITS))
     a.call('Emulation.clearDeviceMetricsOverride')
-    ok = met and heard and gum == 0 and quiet and ui and mark and in_lobby and all(narrow)
+    ok = (met and heard and gum == 0 and quiet and ui and mark and in_lobby
+          and anon_chip and anon_count and all(narrow))
     r.check('T27', '配信部屋：聞き役はマイクを取らず配信者の声だけが流れる', ok, 'pass',
-            '2人=%s / 聞き役に音=%s / 聞き役のgetUserMedia=%s回 / 配信者側に音は無い=%s / ボタン非表示=%s / 📣=%s / ロビーに📣付きで出る=%s / 狭い画面でタブが1行=%s'
-            % (met, heard, gum, quiet, ui, mark, in_lobby, narrow))
+            '2人=%s / 聞き役に音=%s / 聞き役のgetUserMedia=%s回 / 配信者側に音は無い=%s / ボタン非表示=%s / 📣=%s / ロビーに📣付きで出る=%s / 聞き役はロビーに出ない=%s / 人数には入る=%s / 狭い画面でタブが1行=%s'
+            % (met, heard, gum, quiet, ui, mark, in_lobby, anon_chip, anon_count, narrow))
     return a, b
 
 
