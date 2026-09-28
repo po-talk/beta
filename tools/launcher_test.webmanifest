@@ -1,0 +1,14 @@
+{
+  "name": "ぽっと通話 ランチャー試作",
+  "short_name": "ぽっとランチャー",
+  "description": "通話中の部屋を見て、タップすると Safari で開く（かどうかを試す）ランチャーの試作。",
+  "start_url": "./launcher_test.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1526",
+  "theme_color": "#0d1526",
+  "icons": [
+    { "src": "../images/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "../images/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
