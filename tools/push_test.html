@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ぽっと通話 通知テスト</title>
+<!--
+  ぽっと通話 — PWA の通知の実験ページ（tools/ 専用・アプリ本体には一切触らない）
+
+  何を確かめるためのものか
+    A. サーバ不要の通知（Service Worker の showNotification）が、どの環境でどこまで届くか
+       ・前面にいるとき
+       ・**バックグラウンドに回してから何分まで出るか** ← ここが本題
+       ・完全に閉じたら出ないこと（予想どおりか）
+    B. 本物の Web Push は**購読までは作れるが、突く相手（サーバ）がいない**ので鳴らない、を実地で確認
+
+  ★なぜ B に進むのが簡単でないか（CLAUDE.md「Why no backend is load-bearing」）
+    アプリを閉じている間に通知を届けるには Web Push が要り、購読の保存と送信を運営のサーバでやることになる。
+    それは「運営設備が presence を保存・中継する」形で、CLAUDE.md が越えるなと書いている線そのもの。
+    pot-turn Worker が安全なのは「鍵を配るだけで通信を運ばない」からで、同じ言い訳は使えない。
+    → **B に進むなら法的な判断が先**。このページはその前に「A だけでどこまで行けるか」を測るためのもの。
+
+  ★Service Worker のスコープについて（重要）
+    登録は `./push_sw.js`＝**スコープは tools/ に限定**される。**絶対にルートに置かないこと**：
+    このアプリはビルド無しで「main に push したら即公開」なので、ルートに SW を置いてキャッシュを
+    持つと利用者が古い index.html に固定され、更新が届かなくなる。この SW は fetch も拾わない。
+
+  使い方（iPhone）
+    1. Safari でこのページを開く
+    2. 共有 → 「ホーム画面に追加」（★iOS は**ホーム画面に追加した PWA でないと通知を出せない**）
+    3. ホーム画面のアイコンから開き、①→②→③ の順に押す
+    4. ⑤で予約してから**すぐホーム画面に戻す**。何分まで届くかを見る
+-->
+<link rel="manifest" href="push_test.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="通知テスト">
+<meta name="theme-color" content="#0d1526">
+<style>
+  :root{
+    --bg:#f4f6f8; --panel:#fff; --text:#15202b; --sub:#5b6b7a; --line:#dfe5ea;
+    --accent:#1f7a6b; --warn:#a8442a; --chip:#eef2f5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0d1526; --panel:#152033; --text:#e7eef6; --sub:#9fb0c2; --line:#26334a;
+      --accent:#6fd3bf; --warn:#ff9c7a; --chip:#1c2942 }
+  }
+  *{ box-sizing:border-box }
+  body{ margin:0; padding:16px; background:var(--bg); color:var(--text);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    max-width:720px; margin-inline:auto }
+  h1{ font-size:19px; margin:0 0 4px }
+  h2{ font-size:15px; margin:22px 0 8px; color:var(--sub) }
+  p{ margin:6px 0 }
+  .lead{ color:var(--sub); font-size:13px; margin-bottom:14px }
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin:10px 0 }
+  .warn{ border-color:var(--warn) }
+  .warn strong{ color:var(--warn) }
+  dl{ display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:0; font-size:13px }
+  dt{ color:var(--sub); white-space:nowrap }
+  dd{ margin:0; word-break:break-all; font-family:ui-monospace,Menlo,monospace }
+  .ok{ color:var(--accent); font-weight:700 }
+  .ng{ color:var(--warn); font-weight:700 }
+  button{ font:inherit; font-size:14px; padding:9px 14px; margin:3px 4px 3px 0; border-radius:10px;
+    border:1px solid var(--line); background:var(--chip); color:var(--text); cursor:pointer }
+  button:hover{ filter:brightness(.97) }
+  button:disabled{ opacity:.45; cursor:default }
+  button.go{ background:var(--accent); color:#fff; border-color:transparent }
+  .row{ margin:8px 0 }
+  .step{ font-weight:700; margin-right:4px }
+  #log{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px;
+    font:12px/1.6 ui-monospace,Menlo,monospace; white-space:pre-wrap; word-break:break-all;
+    max-height:44vh; overflow:auto }
+  footer{ color:var(--sub); font-size:12px; margin:22px 0 40px }
+  code{ background:var(--chip); padding:1px 5px; border-radius:5px; font-size:12px }
+</style>
+</head>
+<body>
+
+<h1>通知テスト〈実験〉</h1>
+<p class="lead">PWA の通知が<strong>どこまで届くか</strong>を実機で測るためのページです。ぽっと通話の本体とは切り離されています。</p>
+
+<div class="panel warn">
+  <p><strong>⚠️ iPhone では「ホーム画面に追加」してから開いてください。</strong></p>
+  <p style="font-size:13px">iOS は、ホーム画面に追加した PWA の中でしか通知を出せません（16.4 以降）。Safari のタブのままだと ① で失敗します。<br>
+  共有ボタン → 「ホーム画面に追加」 → そのアイコンから開き直してください。</p>
+</div>
+
+<h2>いまの環境</h2>
+<div class="panel"><dl id="env"></dl></div>
+
+<h2>手順</h2>
+<div class="panel">
+  <div class="row"><span class="step">①</span><button id="perm" class="go">通知を許可する</button>
+    <span style="font-size:12px;color:var(--sub)">← 最初に押す（ボタンからでないと許可を求められません）</span></div>
+  <div class="row"><span class="step">②</span><button id="reg" class="go">Service Worker を登録する</button>
+    <span style="font-size:12px;color:var(--sub)">← スコープが <code>/tools/</code> であることを確認します</span></div>
+  <div class="row"><span class="step">③</span><button id="now">いますぐ通知（SW から）</button>
+    <button id="nowPage">いますぐ通知（ページから）</button>
+    <span style="font-size:12px;color:var(--sub)">← iOS では「ページから」は出ない想定</span></div>
+</div>
+
+<h2>④ バックグラウンドで何分まで届くか（本題）</h2>
+<div class="panel">
+  <p style="font-size:13px">押したら<strong>すぐホーム画面に戻して</strong>、そのまま待ってください。通知の本文に「予定」と「実際」が出るので、<strong>ずれ</strong>と<strong>そもそも来たかどうか</strong>を見ます。</p>
+  <div class="row" id="delays"></div>
+  <p style="font-size:13px;color:var(--sub)">短いほうから順に試すのがおすすめです。届かなくなったところが、この端末の限界です。</p>
+</div>
+
+<h2>⑤ 本物の Web Push（購読だけ）</h2>
+<div class="panel">
+  <p style="font-size:13px">購読を作るところまで試します。<strong>突く相手（サーバ）がいないので通知は鳴りません。</strong>「購読は作れる」ことだけを確かめます。</p>
+  <div class="row"><button id="sub">購読してみる</button></div>
+</div>
+
+<h2>後片付け</h2>
+<div class="panel">
+  <div class="row"><button id="unreg">Service Worker を解除する</button>
+    <button id="clear">ログを消す</button></div>
+  <p style="font-size:12px;color:var(--sub)">実験が終わったら解除してください。通知の許可はブラウザの設定から取り消せます。</p>
+</div>
+
+<h2>ログ</h2>
+<div id="log"></div>
+
+<footer>
+  ぽっと通話の実験ページ（<code>tools/</code> 以下・アプリからのリンクはありません）。<br>
+  この Service Worker はキャッシュを持たず、スコープは <code>/tools/</code> に限定されています。
+</footer>
+
+<script>
+const $ = id => document.getElementById(id)
+const LOG_KEY = 'pot-push-test-log'
+
+// ログは localStorage に残す＝バックグラウンドで落とされても結果が消えない
+const loadLog = () => { try { return JSON.parse(localStorage.getItem(LOG_KEY) || '[]') } catch { return [] } }
+const saveLog = a => { try { localStorage.setItem(LOG_KEY, JSON.stringify(a.slice(-200))) } catch {} }
+const log = (...parts) => {
+  const a = loadLog()
+  const t = new Date()
+  a.push(`${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')} ${parts.join(' ')}`)
+  saveLog(a); drawLog()
+}
+const drawLog = () => { const el = $('log'); el.textContent = loadLog().join('\n') || '（まだありません）'; el.scrollTop = el.scrollHeight }
+
+const yn = v => v ? '<span class="ok">はい</span>' : '<span class="ng">いいえ</span>'
+
+const standalone = () =>
+  (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true
+
+let reg = null
+
+const drawEnv = async () => {
+  if (!reg && 'serviceWorker' in navigator) {
+    try { reg = await navigator.serviceWorker.getRegistration('./') } catch {}
+  }
+  const rows = [
+    ['https か localhost', yn(window.isSecureContext)],
+    ['ホーム画面から起動', yn(standalone()) + (standalone() ? '' : ' <span style="color:var(--warn)">← iOS はこれが「はい」でないと通知不可</span>')],
+    ['Notification 対応', yn('Notification' in window)],
+    ['通知の許可', ('Notification' in window) ? Notification.permission : '—'],
+    ['ServiceWorker 対応', yn('serviceWorker' in navigator)],
+    ['PushManager 対応', yn('PushManager' in window)],
+    ['SW の登録', reg ? `<span class="ok">あり</span> scope=${reg.scope}` : '<span class="ng">なし</span>'],
+    ['ページの場所', location.href],
+    ['UA', navigator.userAgent],
+  ]
+  $('env').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')
+}
+
+// ① 許可
+$('perm').onclick = async () => {
+  if (!('Notification' in window)) {
+    log('❌ Notification が使えません。' + (standalone() ? '' : 'ホーム画面に追加してから開き直してください。'))
+    return drawEnv()
+  }
+  try {
+    const r = await Notification.requestPermission()
+    log(r === 'granted' ? '✅ 通知を許可されました' : `❌ 許可されませんでした（${r}）`)
+  } catch (e) { log('❌ 許可の要求で例外:', e && e.message) }
+  drawEnv()
+}
+
+// ② 登録（★相対パス＝スコープは tools/ に限定される）
+$('reg').onclick = async () => {
+  if (!('serviceWorker' in navigator)) return log('❌ ServiceWorker が使えません')
+  try {
+    reg = await navigator.serviceWorker.register('./push_sw.js')
+    await navigator.serviceWorker.ready
+    log('✅ SW を登録:', reg.scope)
+    // 念のためスコープを検証（ルートに漏れていたら大事故なので気づけるようにする）
+    if (!reg.scope.includes('/tools/')) log('🚨 スコープが tools/ の外です。ただちに解除してください')
+  } catch (e) { log('❌ 登録に失敗:', e && e.message) }
+  drawEnv()
+}
+
+const needReady = async () => {
+  if (!('serviceWorker' in navigator)) { log('❌ ServiceWorker が使えません'); return null }
+  if (!reg) reg = await navigator.serviceWorker.getRegistration('./')
+  if (!reg) { log('❌ 先に ② を押してください'); return null }
+  return navigator.serviceWorker.ready
+}
+
+// ③ いますぐ
+$('now').onclick = async () => {
+  const r = await needReady(); if (!r) return
+  try { await (await r).showNotification('ぽっと通話（実験）', { body: 'SW からの即時通知です', tag: 'pot-now' }); log('→ SW から即時通知を出しました') }
+  catch (e) { log('❌ SW の通知に失敗:', e && e.message) }
+}
+$('nowPage').onclick = () => {
+  try { new Notification('ぽっと通話（実験）', { body: 'ページからの即時通知です' }); log('→ ページから即時通知を出しました') }
+  catch (e) { log('❌ ページからの通知は不可（iOS では想定どおり）:', e && e.message) }
+}
+
+// ④ 予約
+const DELAYS = [10, 30, 60, 180, 300, 600, 1800]
+$('delays').innerHTML = DELAYS.map(s =>
+  `<button data-s="${s}">${s < 60 ? s + ' 秒後' : (s / 60) + ' 分後'}</button>`).join('')
+$('delays').onclick = async e => {
+  const b = e.target.closest('button[data-s]'); if (!b) return
+  const s = Number(b.dataset.s)
+  const r = await needReady(); if (!r) return
+  const sw = (await r).active
+  if (!sw) return log('❌ SW がまだ動いていません')
+  sw.postMessage({ type: 'notify', delay: s * 1000 })
+  log(`⏱ ${s < 60 ? s + ' 秒' : (s / 60) + ' 分'}後の通知を予約しました → いますぐホーム画面に戻してください`)
+}
+
+// ⑤ 購読（送る側はいない）
+$('sub').onclick = async () => {
+  const r = await needReady(); if (!r) return
+  if (!('PushManager' in window)) return log('❌ PushManager が使えません')
+  try {
+    // applicationServerKey 無しは多くのブラウザで拒否される。拒否されること自体が結果なので、そのまま試す。
+    const s = await (await r).pushManager.subscribe({ userVisibleOnly: true })
+    log('✅ 購読できました（が、突く相手がいないので鳴りません）:', s.endpoint.slice(0, 60) + '…')
+  } catch (e) {
+    log('❌ 購読に失敗:', e && e.message, '／VAPID 鍵が要る＝サーバが要るということ')
+  }
+}
+
+// 後片付け
+$('unreg').onclick = async () => {
+  const rs = ('serviceWorker' in navigator) ? await navigator.serviceWorker.getRegistrations() : []
+  let n = 0
+  for (const r of rs) if (r.scope.includes('/tools/')) { await r.unregister(); n++ }
+  reg = null; log(`🧹 SW を ${n} 件解除しました`); drawEnv()
+}
+$('clear').onclick = () => { saveLog([]); drawLog() }
+
+// SW からの報告
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    const d = e.data || {}
+    if (d.type === 'fired') log(`🔔 発火：予定 ${Math.round(d.delay / 1000)} 秒 → 実際 ${d.waited} 秒`)
+    if (d.type === 'clicked') log('👆 通知をタップして戻ってきました')
+  })
+}
+
+// 前面に戻ったら環境を描き直す（許可の状態が変わっていることがある）
+document.addEventListener('visibilitychange', () => { if (!document.hidden) drawEnv() })
+
+drawLog(); drawEnv()
+log('--- 開くたびにここに続きが出ます（ログは端末に残ります）---')
+</script>
+</body>
+</html>
