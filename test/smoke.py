@@ -765,11 +765,13 @@ def T40(r):
     join_in = t.eval("document.getElementById('createBox').contains(document.getElementById('join'))")
     # 閉じている間の見出しは「部屋を作る」
     label_closed = t.eval("document.querySelector('#createBox > summary').innerText").strip()
-    # ★枠（カード）にしないこと。開いたときのラベルと同じ**素のテキスト行**にする指定なので、
-    #   背景や境界線が付いていたら崩れている（プロフィールのカードと同じ重さに見えてしまう）。
-    plain = t.eval("(() => { const s = getComputedStyle(document.querySelector('#createBox > summary'));"
-                   " return s.borderTopWidth === '0px' &&"
-                   " (s.backgroundColor === 'rgba(0, 0, 0, 0)' || s.backgroundColor === 'transparent') })()")
+    # ★枠の扱いは**畳んでいるときと開いたときで違う**（CSS の .create のコメントに経緯がある）。
+    #   2026-09-12 は「枠にしない」が利用者の指定だったが、2026-09-27 に利用者自身が
+    #   「畳んだ状態を少し目立たせたい」に変えた（v0.14.56）。折衷として**畳んでいる間だけ**角丸の枠を付け、
+    #   開いたら 09-12 のまま素の「部屋名」ラベルに戻す。両方を見る（片方だけだと元に戻っても気づけない）。
+    framed_closed = t.eval("(() => { const s = getComputedStyle(document.querySelector('#createBox > summary'));"
+                           " return s.borderTopWidth !== '0px' &&"
+                           " s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'transparent' })()")
     # 開けば招待リンクも出る（作る前に配る導線＝配信部屋のため）
     t.eval("document.querySelector('#createBox > summary').click()")
     opened = t.wait_for("!document.getElementById('shareWrap').hidden", timeout=SHORT)
@@ -777,14 +779,18 @@ def T40(r):
     #   中に同じラベルを二重に置かないので、ここが崩れると部屋名の見出しが消える。
     label_open = t.eval("document.querySelector('#createBox > summary').innerText").replace('\n', ' ')
     morphed = '部屋名' in label_open and '部屋を作る' not in label_open and '部屋を作る' in label_closed
+    # 開いたら枠を外して入力欄に繋げる（2026-09-12 の指定はここが生きている）
+    plain_open = t.eval("(() => { const s = getComputedStyle(document.querySelector('#createBox > summary'));"
+                        " return s.borderTopWidth === '0px' &&"
+                        " (s.backgroundColor === 'rgba(0, 0, 0, 0)' || s.backgroundColor === 'transparent') })()")
     # 共有リンクから来た人は最初から開いている
     t2 = r.open_tab(hash_='#' + urllib.parse.quote('テスト部屋'))
     from_link = t2.eval("document.getElementById('createBox').open")
     ok = (closed and idle_hidden and share_hidden and ver_shown and join_in and opened
-          and morphed and plain and from_link)
+          and morphed and framed_closed and plain_open and from_link)
     r.check('T40', '最初の画面は「名前→部屋を作る→ロビー」', ok, 'pass',
-            '畳んである=%s / 状態カード非表示=%s / 招待リンク非表示=%s / 版は見える=%s / 参加ボタンが中=%s / 開くと招待リンク=%s / 見出しが部屋名に変わる=%s(%r) / 枠なしの素の行=%s / 共有リンクから来たら開く=%s'
-            % (closed, idle_hidden, share_hidden, ver_shown, join_in, opened, morphed, label_open, plain, from_link))
+            '畳んである=%s / 状態カード非表示=%s / 招待リンク非表示=%s / 版は見える=%s / 参加ボタンが中=%s / 開くと招待リンク=%s / 見出しが部屋名に変わる=%s(%r) / 畳んだら角丸の枠=%s / 開いたら枠なし=%s / 共有リンクから来たら開く=%s'
+            % (closed, idle_hidden, share_hidden, ver_shown, join_in, opened, morphed, label_open, framed_closed, plain_open, from_link))
 
 
 def T43(r):
