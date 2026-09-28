@@ -4349,6 +4349,9 @@ const setSpeakers = ids => {
     if (!now && before) { stopSpeaking(); showPeerNotice('🎙 話す許可が外れました（マイクは止めました）') }
   }
   renderMembers(); renderSpeak(); renderBcNote()
+  // 立場が変わると lobbyNamed() の答えも変わる（登壇を許された＝ロビーに名乗る／外れた＝隠れる）。
+  // 置かないと次のハートビートまで最大5秒ずれる（読み上げのトグルと同じ理由）。
+  sendHeartbeat()
 }
 
 // オーナーだけが呼ぶ：いまの原本（call.grants）に署名して全員へ配り、自分にも適用する。
@@ -5483,9 +5486,20 @@ const presences = new Map()  // 発信者peerId → {room, name, emoji, muted, s
 
 // 読み上げがオンか＝**配信部屋のオーナーのときだけ**真。ロビーに出す印（tt）と自分ぶんの在室で共用する
 const ttsOwnerOn = () => !!(call.bcast && call.ownerKey && sndTts)
-const heartbeatPayload = () => call.joinedId
-  ? { room: call.joinedId, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey), name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), elapsed: mySeconds(), talk: talkLevel, tt: ttsOwnerOn() }
-  : { room: null }
+// ロビーに身元（名前・絵文字・成長段階）を出してよいか。
+// ★**配信部屋の聞き役は出さない**（v0.15.0）。配信を聞きに来たことが知られるのを嫌う人が多い、という利用者の見立て。
+//   ロビーの在室は**部屋に入っていない人にも全員見える**ので、ここが露出のいちばん広い経路だった。
+//   部屋 ID は送り続けるので**人数は数えられる**し、09-18 の規則「部屋にいる人は必ず告知する」（秘密部屋を作らせない）も壊れない。
+//   ★消すのは「表示」ではなく「送信」であることが要点＝出さないと決めたものは流さない（流したものは隠しても読まれる）。
+//   声を出せる人（オーナー・登壇者）は今までどおり名乗る＝「喋る人は名乗る」。雑談部屋は全員が話す側なので対象外。
+const lobbyNamed = () => !call.bcast || !!call.ownerKey || call.speakers.has(myPeerId)
+const heartbeatPayload = () => {
+  if (!call.joinedId) return { room: null }
+  const p = { room: call.joinedId, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy,
+    bo: !!(call.bcast && call.ownerKey), muted: micOff(), elapsed: mySeconds(), talk: talkLevel, tt: ttsOwnerOn() }
+  if (lobbyNamed()) { p.name = profile.name; p.emoji = profile.emoji; p.stage = stageOf() }
+  return p
+}
 // ───────── 在室の Nostr 直publish（段階A：既存ロビーに併走で足すだけ） ─────────
 // 外部（ブログのバナー等）が「この部屋が今ライブか」を、メッシュに入らず読み取り専用で知れるように、
 // 通話中は在室を公開Nostrリレーへ直接publishする。部屋名そのものは載せず SHA-256 ハッシュ（d タグ）だけ。
@@ -5697,7 +5711,8 @@ const renderLobby = () => {
     a.push(p)
   }
   presences.forEach(v => push(v.room, { name: v.name, emoji: v.emoji, muted: v.muted, stage: v.stage, elapsed: v.elapsed, ts: v.ts, talk: v.talk, rn: v.rn, tag: v.tag, tagBy: v.tagBy, bo: v.bo, tt: v.tt }))
-  if (call.joinedId) push(call.joinedId, { name: profile.name, emoji: profile.emoji, muted: call.muted, stage: stageOf(), elapsed: mySeconds(), ts: Date.now(), talk: talkLevel, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey), tt: ttsOwnerOn() })
+  // 自分ぶんも送る側と同じ規則（lobbyNamed）で足す＝自分の画面だけ自分が見える、という食い違いを作らない
+  if (call.joinedId) push(call.joinedId, { name: lobbyNamed() ? profile.name : '', emoji: lobbyNamed() ? profile.emoji : '', muted: call.muted, stage: lobbyNamed() ? stageOf() : '', elapsed: mySeconds(), ts: Date.now(), talk: talkLevel, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey), tt: ttsOwnerOn() })
   // ★配信部屋は**配信者がいるときだけ**一覧に出す（v0.14.0）。聞き役だけの部屋に新しい人が流れ込まない
   //   （配信者が去った部屋は下の「配信の終わり」で片づく）。告知そのものは全員が送る＝人数は出る
   byRoom.forEach((people, room) => { if (isBcRoom(room) && !people.some(p => p.bo)) byRoom.delete(room) })
@@ -5771,6 +5786,9 @@ const renderLobby = () => {
     dur.append(durText, eq)
     const ppl = document.createElement('div'); ppl.className = 'room-people'
     people.forEach(p => {
+      // 名前を送ってこない＝配信部屋の聞き役（上の lobbyNamed）。**チップは出さないが人数には入っている**。
+      // 雑談部屋は今までどおり（名前が空なら「ゲスト」）。オーナー（bo）は名前が空でも出す＝配信者が消えない。
+      if (isBcRoom(room) && !p.bo && !p.name) return
       const rp = document.createElement('span'); rp.className = 'rp' + (p.muted ? ' mut' : '')
       const e = document.createElement('span'); e.textContent = p.emoji || '🙂'
       const n = document.createElement('span'); n.textContent = (p.name || 'ゲスト') + (p.stage ? ' ' + p.stage : '')
