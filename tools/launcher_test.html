@@ -24,11 +24,15 @@
     ② 別タブ指定               <a target="_blank">
     ③ script から              window.open(url, '_blank')
     ④ 別オリジン（potalk.app） ＝確実にスコープ外。これも駄目なら ①〜③ も望み薄
-    ⑤ x-safari-https://        ＝iOS の「Safari で開く」URL スキーム（効くかは版による）
+    ⑤⑥ x-safari-https://      ＝iOS の「Safari で開く」URL スキーム（⑤=同じオリジン・⑥=本番）
 
-  ★2026-09-28 の実測：①〜④ は**すべてアプリ内ブラウザ**で開いた（Safari には出ない）。
-    → Web の手段で PWA から Safari に抜けるのは望み薄。残るのは ⑤ と、
-    「そもそも Safari でなくてよいのでは」という問い（下の「次に確かめること」）。
+  ★2026-09-28 の実測（結論が出た）
+    ・①〜④ は**すべてアプリ内ブラウザ**で開く（別オリジンでも Safari には出ない）
+    ・**⑤ の x-safari-https:// だけが本物の Safari を開いた**
+    ・**アプリ内ブラウザは画面ロックでマイクが切れる**（＝PWA と同じ。Safari の代わりにはならない）
+    → **x-safari-https:// が唯一の道**。Step 1（PWA はランチャー・通話は Safari）は成立する。
+    ただし非公式なスキームなので、①効かなくなっても何も起きない＝フォールバックが要る
+    ②iOS の PWA のときだけ使う（ふつうの Safari や Android・PC では未知のスキームとして失敗する）。
 
   部屋の一覧は本体と同じ仕組み（Trystero＋Nostr リレーの隠し部屋 `__lobby__`）を**読むだけ**。
   自分の在室は流さない（通話していないので）。サーバは増えない＝CLAUDE.md の枠内。
@@ -194,12 +198,17 @@ const ways = (id, name) => {
   a4.href = roomUrl(PROD_BASE, id, name)
   a4.onclick = () => log('④ 別オリジン:', name || id)
   // ⑤ iOS の「Safari で開く」URL スキーム。https:// を x-safari-https:// に置き換えるだけ。
-  //    公式なものではなく、版によって効いたり効かなかったりする。①〜④ が全部アプリ内ブラウザだったので最後の望み。
-  const a5 = document.createElement('a'); a5.textContent = '⑤ x-safari-https://'
-  a5.href = roomUrl(PROD_BASE, id, name).replace(/^https:\/\//, 'x-safari-https://')
-  a5.onclick = () => log('⑤ x-safari スキーム:', name || id)
+  //    ★2026-09-28 実測：**これだけが本物の Safari を開いた**（①〜④ は全部アプリ内ブラウザ）。
+  //    非公式なので将来黙って効かなくなりうる。効かないときは**何も起きない**＝フォールバックが要る。
+  //    このページと同じオリジン（＝β なら β）を開く。本番を開きたいときは ⑥。
+  const a5 = document.createElement('a'); a5.textContent = '⑤ x-safari（同じオリジン）'
+  a5.href = roomUrl(APP_BASE, id, name).replace(/^https:\/\//, 'x-safari-https://')
+  a5.onclick = () => log('⑤ x-safari（同オリジン）:', name || id)
+  const a6 = document.createElement('a'); a6.textContent = '⑥ x-safari（potalk.app）'
+  a6.href = roomUrl(PROD_BASE, id, name).replace(/^https:\/\//, 'x-safari-https://')
+  a6.onclick = () => log('⑥ x-safari（本番）:', name || id)
 
-  frag.append(a1, a2, b3, a4, a5)
+  frag.append(a1, a2, b3, a4, a5, a6)
   return frag
 }
 
