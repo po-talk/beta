@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.1
+  ぽっと通話〈実験版〉 v0.15.2
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1344,7 +1344,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.1'
+const APP_VERSION = 'v0.15.2'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3538,6 +3538,9 @@ const speakChat = (uid, text) => {
   if (!t) return
   ttsQueue.push({ uid, text: t, at: performance.now() })
   while (ttsQueue.length > TTS_QUEUE_MAX) ttsQueue.shift()
+  // ★エンジンの遅延読み込み（v0.15.2）：つなぎ直しの引き継ぎ（ttsWarm）ではエンジンを読まないので、
+  //   最初のひとことのここで読む。読み込み中は pumpTts が待ち、進捗は ttsStage が設定行と通知欄に出す。
+  if (!ttsEngine && !ttsLoading) loadTts().catch(() => {})
   if (!ttsTimer) pumpTts()
 }
 // 退出で畳む（join/leave の対称。エンジンは捨てない＝再入室で待たせない）。**stopVad（ctx を閉じる）より先に**呼ぶ
@@ -3573,7 +3576,12 @@ const ttsStart = (sample = true) => loadTts().then(() => {
   ttsSetOn(true)                                        // 2 本目のトラックを用意して案内（{ok} が来た相手へ送る）
   if (sample && !ttsSpeaking) ttsSpeak('self', '読み上げの準備ができました')
 }).catch(() => {})
-const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsStart(false) }   // つなぎ直し＝見本は読まない（全員に毎回流れる・レビュー §3-3）
+// つなぎ直し（＝ページ再読み込み）でオンを引き継いだときの復帰。★エンジン（約 700MB）はここでは**読まない**（v0.15.2）。
+// 実測（2026-09-29・HANDOFF）：つなぎ直しのたびに読み込み直すと、iOS が前の分を解放しきる前に次を掴み、
+// 10 回ほどで Out of memory になる（配信 1 時間＋数回のつなぎ直しで実際に落ちた）。
+// トラックと案内（ttsSetOn）は WebAudio だけで安いので即座に整える＝仮想行・{on} の案内・「届いている人」は保たれる。
+// エンジンは**最初のひとことが来たとき**（speakChat）に読む。見本を読まないのは従来どおり（レビュー §3-3）。
+const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsSetOn(true) }
 {
   const box = $('sndTts')
   box.checked = sndTts
@@ -5118,7 +5126,7 @@ const armJoined = (roomId, name, bcast) => {
   $('unlock').style.display = 'none'
   $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
   $('sndReactRow').style.display = 'flex'
-  syncTtsRow(); ttsWarm()   // 読み上げは配信部屋のオーナーだけ。つなぎ直しでオンを引き継いだときだけ読み込み直す（保存はしない・v0.14.50）
+  syncTtsRow(); ttsWarm()   // 読み上げは配信部屋のオーナーだけ。つなぎ直しの引き継ぎではトラックと案内だけ整え、エンジンは最初のひとことまで読まない（v0.15.2。保存はしない・v0.14.50）
   $('retry').hidden = false
   roomInput.disabled = true; lockProfile(true); syncKindRow(); syncCreateBox()
   // 通話中は名前も部屋名も変えられないので、入力欄ごと畳む（名前は参加者リスト、部屋名は状態表示に出ている）
