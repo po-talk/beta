@@ -1157,12 +1157,13 @@ def T55(r, a, b):
     noname2 = sw and a.eval("window.__T.ttsTexts[window.__T.ttsTexts.length - 1]") == 'じぶん' and a.eval("localStorage.getItem('pot-call-tts-noname') === '1'")
     show_tab(a, 'settings'); a.eval("document.getElementById('sndTtsNoName').click()")   # 戻す
     # 英単語のカタカナ辞書（v0.14.60）：複数語（hello world）・CamelCase（WebRTC）・名前（qramo）・単語（test）
+    # ＋日本語の読み辞書（v0.15.5・TTS_YOMI）：成る程 → なるほど（英字より先に置換され、英字辞書とも両立）
     n1d = a.eval("window.__T.ttsTexts.length")
     show_tab(a, 'chat')
-    a.eval("(() => { const i = document.getElementById('chatText'); i.value = 'hello worldとWebRTCの接続 qramo test'; document.getElementById('chatSend').click() })()")
+    a.eval("(() => { const i = document.getElementById('chatText'); i.value = '成る程 hello worldとWebRTCの接続 qramo test'; document.getElementById('chatSend').click() })()")
     a.wait_for("window.__T.ttsTexts.length > %d" % n1d, timeout=SHORT)
     kana_text = a.eval("window.__T.ttsTexts[window.__T.ttsTexts.length - 1]")
-    kana = kana_text.endswith('ハローワールドとウェブアールティーシーの接続 クラモ テスト')
+    kana = kana_text.endswith('なるほど ハローワールドとウェブアールティーシーの接続 クラモ テスト')
     listener_quiet = b.eval("window.__T.ttsTexts.length") == 0   # 聞き役は合成しない
     # オフにすると読まない
     a.eval("document.getElementById('sndTts').click()")
