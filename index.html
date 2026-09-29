@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.2
+  ぽっと通話〈実験版〉 v0.15.3
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1344,7 +1344,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.2'
+const APP_VERSION = 'v0.15.3'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3235,6 +3235,12 @@ const ttsCrashedBefore = ssGet(TTS_LIVE_KEY) === '1'
 ssDel(TTS_LIVE_KEY)
 if (ttsCrashedBefore) lsSet(TTS_CRASH_KEY, String((parseInt(lsGet(TTS_CRASH_KEY, '0')) || 0) + 1))
 const ttsCrashes = () => parseInt(lsGet(TTS_CRASH_KEY, '0')) || 0
+// メモリ不足でエンジンの読み込みや合成が失敗した回数（v0.15.3・🔬 の oomN）。crashN が「ページごと
+// 開き直された」を数えるのに対し、こちらは**ページは生きているのに読み上げだけが死んだ**回数。
+// 2026-09-29 の実機（本番・配信 1 時間）で起きた壊れ方はどこにも記録されていなかったので追加した。
+const TTS_OOM_KEY = 'pot-call-tts-oom'
+const ttsOoms = () => parseInt(lsGet(TTS_OOM_KEY, '0')) || 0
+const ttsOomHit = raw => { if (/out of memory/i.test(raw)) lsSet(TTS_OOM_KEY, String(ttsOoms() + 1)) }
 addEventListener('pagehide', () => ssDel(TTS_LIVE_KEY))
 const TTS_GAP_MS = 700         // これだけ静かなら「区切り」（息継ぎは 200〜500ms）
 const TTS_MAX_WAIT_MS = 8000   // これ以上は待たずに読む
@@ -3380,6 +3386,16 @@ const ttsStage = (msg) => {
   if (msg) showPeerNotice('🗣 ' + msg)
   else if (!n.hidden && n.textContent.startsWith('🗣')) showPeerNotice('')   // 自分の通知だけ消す
 }
+// 生のエラー（英語）を、**起きたことと直し方**が分かる日本語にする（v0.15.3）。①②の日本語はそのまま素通し。
+// 生文は 🔬（ttsLast）に残す＝診断を殺さない。実機で出た実物：
+//   All execution providers failed: wasm: no available backend found. ERR: [wasm] RangeError: Out of memory
+// 復旧の詳しい順序（アプリ・タブを閉じる → それでも駄目なら端末の再起動が確実）は manual の「困ったとき」にある。
+const ttsErrText = raw => {
+  if (/out of memory/i.test(raw)) return '読み上げに使うメモリが足りませんでした。「つなぎ直す」を押すと直ることがあります（ほかのアプリやタブを閉じると入りやすくなります）'
+  if (/fetch|network|load failed|404/i.test(raw)) return '読み上げの読み込みに失敗しました。電波の良いところでもう一度お試しください'
+  if (/no available backend|execution provider/i.test(raw)) return '読み上げの部品を動かせませんでした。「つなぎ直す」を押すと直ることがあります'
+  return raw || '読み上げの準備に失敗しました'
+}
 // ①ライブラリ ②推論エンジン ③声のモデル。段階ごとに失敗の文言を分ける（どこで詰まったかが設定行で分かる）
 const loadTts = () => {
   if (ttsEngine) return Promise.resolve(ttsEngine)
@@ -3407,7 +3423,10 @@ const loadTts = () => {
       ssSet(TTS_LIVE_KEY, '1')   // 落ちた印（上）。pagehide と自前の再読み込みで消す
       return ttsEngine
     } catch (e) {
-      ttsStage('⚠️ ' + (e && e.message ? e.message : '読み上げの準備に失敗しました'))
+      const raw = String((e && e.message) || e || '')
+      ttsLast = 'ERR ' + raw.slice(0, 120)   // 生文は 🔬 にだけ残す（画面は下の日本語）
+      ttsOomHit(raw)
+      ttsStage('⚠️ ' + ttsErrText(raw))
       throw e
     } finally { ttsLoading = null }
   })()
@@ -3516,7 +3535,7 @@ const ttsSpeak = async (uid, text) => {
     sendTo(call.ttsAction, { now: uid === 'self' ? myPeerId : uid })   // 読んでいる人の行を相手の画面でも光らせる
     await new Promise(res => { src.onended = res; src.start() })
     ttsLast = 'end'
-  } catch (e) { ttsLast = 'error:' + (e && e.message ? e.message : e) }
+  } catch (e) { const raw = String((e && e.message) || e || ''); ttsOomHit(raw); ttsLast = 'error:' + raw }
   finally {
     sendTo(call.ttsAction, { now: null })
     ttsMark(uid, false); ttsMarkV(false); ttsSource = null; ttsSpeaking = false
@@ -5035,7 +5054,7 @@ const diagAudio = () => {
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
       tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
       'ctx=' + ctx, 'out=' + ($('appAudio').srcObject ? ($('appAudio').paused ? '停止' : '再生中') : 'なし'), '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
-      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : '') + ' crash' + ttsCrashes()
+      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : '') + ' crash' + ttsCrashes() + ' oom' + ttsOoms()
         + (call.ownerKey ? ' sent' + call.ttsSent.size : ' ann:' + (call.ttsAnn ? (call.ttsAnn.on ? 'on' : 'off') + (call.ttsAnn.from === call.ownerPeer ? '/owner' : '/other') : 'none') + ' ack:' + (call.ttsAckedFrom ? 'y' : 'n') + ' ttsEl' + (call.audios.get('tts') || []).length + (ttsFlowing() ? ' flow' : '')),
       navigator.audioSession ? 'as=' + navigator.audioSession.type + '/' + navigator.audioSession.state : '',
       diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加'
