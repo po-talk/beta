@@ -1875,6 +1875,45 @@ def T32(r, room):
         click_leave(t)
 
 
+def T27h(r, room):
+    """通話希望者募集（v0.15.9）：配信者がスイッチをオン → 聞き役に「通話希望」ボタン → 押すと配信者に 🙋 →
+    従来どおり 🎙 で許可すると聞き役は「マイクを使う」に変わる。
+
+    ★挙手は grantAction の逆向き（聞き役→配信者）。募集オフの間は聞き役に通話希望ボタンを出さない。
+    """
+    o = r.open_tab()
+    if not make_bcast(r, o, room + 'REQ') or not o.wait_for("location.hash.includes('~pk~')", timeout=DISCOVER):
+        r.check('T27h', '通話希望者募集：希望→許可', False, 'pass', '配信部屋を作れなかった')
+        return
+    l = r.open_tab(hash_=o.eval('location.hash'))
+    l.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役（鍵を持たない）
+    click_join(l)
+    met = o.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    # ① 募集オフの間は聞き役に「通話希望」ボタンが出ない
+    off_hidden = l.eval("document.getElementById('raise').hidden")
+    # ② 配信者が募集オン → 聞き役にボタンが出る
+    show_tab(o, 'settings')
+    row_shown = o.wait_for("!document.getElementById('reqOpenRow').hidden", timeout=SHORT)
+    o.eval("document.getElementById('reqOpen').click()")
+    raise_shown = l.wait_for("!document.getElementById('raise').hidden", timeout=SHORT)
+    # ③ 聞き役が「通話希望」→ 配信者のメンバーに 🙋
+    l.eval("document.getElementById('raise').click()")
+    mark = o.wait_for("[...document.querySelectorAll('#members .m-bc')].some(e => e.textContent === '🙋')", timeout=SHORT)
+    label_on = l.eval("document.querySelector('#raise span').textContent") == '通話希望を取り消す'
+    # ④ 配信者が 🎙 で許可 → 🙋 が消えて 🎙、聞き役に「マイクを使う」
+    granted = o.eval("(() => { const g = document.querySelector('#members .member:not(:first-child) .m-mic');"
+                     " if (g) g.click(); return !!g })()")
+    speak_shown = l.wait_for(SPEAK_SHOWN, timeout=SHORT)
+    mark_gone = o.wait_for("[...document.querySelectorAll('#members .m-bc')].every(e => e.textContent !== '🙋')"
+                           " && [...document.querySelectorAll('#members .m-bc')].some(e => e.textContent === '🎙')", timeout=SHORT)
+    raise_gone = l.wait_for("document.getElementById('raise').hidden", timeout=SHORT)   # 許可されたら通話希望は要らない
+    ok = met and off_hidden and row_shown and raise_shown and mark and label_on and granted and speak_shown and mark_gone and raise_gone
+    r.check('T27h', '通話希望者募集：オフでボタン無し・オンで通話希望→🙋→🎙 許可→マイクを使う', ok, 'pass',
+            '2人=%s / 募集オフでボタン無し=%s / 設定に募集行=%s / オンでボタン=%s / 希望で🙋=%s / ボタン文言=%s / 許可した=%s / マイクを使う=%s / 🙋消えて🎙=%s / 通話希望が消える=%s'
+            % (met, off_hidden, row_shown, raise_shown, mark, label_on, granted, speak_shown, mark_gone, raise_gone))
+    click_leave(l); click_leave(o)
+
+
 def T27g(r, room):
     """配信者は、聞き役が突然消えても勝手にリロードしない（v0.15.4）
 
@@ -2568,6 +2607,8 @@ def main():
             T28(r, room)
         if run('T27g'):
             T27g(r, room)
+        if run('T27h'):
+            T27h(r, room)
         # 人数上限は9タブ張るので**明示したときだけ**走らせる（既定の回帰には重すぎる）
         if a.only and 'T29' in a.only:
             T29(r, room)
