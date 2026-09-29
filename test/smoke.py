@@ -1569,7 +1569,7 @@ def make_bcast(r, tab, room):
 # 配信部屋まわりで繰り返し見る値
 SPEAK_SHOWN = "getComputedStyle(document.getElementById('speak')).display !== 'none'"
 MUTE_SHOWN = "getComputedStyle(document.getElementById('mute')).display !== 'none'"
-BC_NOTE = "(document.getElementById('bcNoteText')||{}).textContent||''"
+BC_NOTE = "((document.getElementById('bcNoteText')||{}).textContent || document.getElementById('bcNote').textContent || '')"
 LIVE_TRACKS = "__T.streams.flatMap(s => s.getTracks()).filter(t => t.readyState === 'live').length"
 
 
