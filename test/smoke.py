@@ -1874,6 +1874,41 @@ def T32(r, room):
         click_leave(t)
 
 
+def T27g(r, room):
+    """配信者は、聞き役が突然消えても勝手にリロードしない（v0.15.4）
+
+    2026-09-29・実機で確定した誤爆：唯一の聞き役が bye 無しで切れる（別アプリの通知を開く等）と、
+    配信者が cut 枝（lostPeer かつ 0 人）で「壊れた」と判定し、25 秒後に自動リロードしていた。
+    配信者にとって 0 人は正常なので、判定そのものを偽にした。**25 秒待たず**に、判定フック
+    window.__potBroken() が偽のままであることで確かめる（監視ループは 2 秒周期）。
+    対照：ふつうの雑談部屋では、相手が bye 無しで消えると（これは本当に壊れているので）真になる。
+    """
+    o = r.open_tab()
+    if not make_bcast(r, o, room + 'NRL'):
+        r.check('T27g', '配信者は聞き役が消えても自動リロードしない', False, 'pass', '配信部屋を作れなかった')
+        return
+    if not o.wait_for("location.hash.includes('~pk~')", timeout=DISCOVER):
+        r.check('T27g', '配信者は聞き役が消えても自動リロードしない', False, 'pass', '配信部屋に入れなかった')
+        return
+    h = o.eval('location.hash')
+    l = r.open_tab(hash_=h)
+    l.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役（鍵を持たない）
+    click_join(l)
+    met = o.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    # ★聞き役を**突然**落とす：about:blank へ飛ばす（アプリの bye は出ない＝実機の「通知を開いて切れた」相当）
+    l.call('Page.navigate', url='about:blank')
+    alone = o.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER)   # 配信者から見て 0 人（自分だけ）
+    # 監視ループ（2 秒周期）を数回分待って、判定が偽のままであること＝壊れ扱いしない
+    time.sleep(5)
+    not_broken = o.eval('typeof window.__potBroken === "function" && window.__potBroken() === false')
+    still = o.eval("!document.getElementById('tabs').hidden")   # 通話画面のまま（リロードもされていない）
+    ok = met and alone and not_broken and still
+    r.check('T27g', '配信者は聞き役が突然消えても自動リロードしない（cut 枝を発火させない）', ok, 'pass',
+            '2人になった=%s / 聞き役が消えて配信者だけ=%s / 壊れ扱いしない=%s / 通話画面のまま=%s'
+            % (met, alone, not_broken, still))
+    click_leave(o)
+
+
 def T28(r, room):
     """配信部屋：**配信者がいない部屋では、誰の音も流れない**（受信側の既定）
 
@@ -2517,6 +2552,8 @@ def main():
             T32(r, room)
         if run('T28'):
             T28(r, room)
+        if run('T27g'):
+            T27g(r, room)
         # 人数上限は9タブ張るので**明示したときだけ**走らせる（既定の回帰には重すぎる）
         if a.only and 'T29' in a.only:
             T29(r, room)

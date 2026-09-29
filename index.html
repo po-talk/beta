@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.3
+  ぽっと通話〈実験版〉 v0.15.4
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1344,7 +1344,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.3'
+const APP_VERSION = 'v0.15.4'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -5403,11 +5403,19 @@ const spendAuto = () => {
 // expect ＝ 音が来るはずの相手の数。**繋がっている人数ではない**のが要点で、配信部屋では
 // 聞き役が何人いても「音が来ないのが正常」＝ここに入らない（入れると、リスナーだけの部屋で
 // 25秒ごとに勝手にリロードが始まる）。誰からも音が来る予定が無いなら、壊れようがない。
+// ★配信者は cut 枝を発火させない（v0.15.4）。cut 枝は「bye 無しで相手を失って、いま 0 人」だが、
+//   **配信者にとって 0 人は正常**（リスナーを待っている・全員が別アプリの通知等で一時的に消えた、も日常）。
+//   ここで発火すると、唯一のリスナーが消えた 25 秒後に**配信者が勝手にリロード**され、読み上げの 700MB を
+//   取り直し、配信そのものが途切れる（2026-09-29・実機・セカンドオピニオン③で確定）。通知にも格下げしない：
+//   「0 人＝正常」なので「接続が不安定かも」を出すこと自体が誤報になる（＝静かに待つのが正しい）。
+//   配信者自身の相手＝登壇者の音が途切れる deaf 枝は残す（expect は canHear で数える＝登壇者だけ）。
 const isBroken = (stuck, expect) =>
-  (call.lostPeer && call.peers.size === 0) ||
+  (call.lostPeer && call.peers.size === 0 && !(call.bcast && call.ownerKey)) ||
   (expect > 0 && stuck.length === expect)
+let lastBroken = false               // 直近の判定（診断・テスト用に window.__potBroken で読める）
 const checkRecover = (now, stuck, expect) => {
-  if (!call.joinedId || retrying || !isBroken(stuck, expect)) { call.lostAt = 0; return }
+  lastBroken = isBroken(stuck, expect)
+  if (!call.joinedId || retrying || !lastBroken) { call.lostAt = 0; return }
   if (!call.lostAt) { call.lostAt = now; return }              // 壊れ始めた時刻を覚える
   if (now - call.lostAt < RECOVER_AFTER_MS) return             // まだ待つ（瞬断かもしれない）
   if (!autoLeft()) {                                           // 打ち止め。ここから先は人に委ねる
@@ -5418,6 +5426,7 @@ const checkRecover = (now, stuck, expect) => {
   spendAuto()
   doReconnect({ auto: true })
 }
+window.__potBroken = () => lastBroken   // 診断・テスト用（自動復帰の判定結果。配信者は cut 枝で真にならない）
 
 // 退出：join が確保したもの（マイク・room・audio要素・解析・画面ロック・タイマー類）を全て解放する。
 // **「① 副作用 → ② resetCall() → ③ 画面 → ④ leaving」の順を崩さないこと。**
