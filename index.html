@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.14
+  ぽっと通話〈実験版〉 v0.15.15
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -541,7 +541,16 @@
   /* 配信部屋の説明。注意ではなく状態なので、警告の黄ではなくティール（＝通話中の色）で置く。
      「いま自分は話せるのか」が一番の関心なので、参加者リストより上に出す */
   .bc-note{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.5;
-    background:rgba(0,229,204,.09); border:1px solid rgba(0,229,204,.30); color:var(--accent-soft) }
+    background:rgba(0,229,204,.09); border:1px solid rgba(0,229,204,.30); color:var(--accent-soft);
+    display:flex; align-items:flex-start; gap:8px;
+    /* ふわっと縮んで消える（× で閉じる・v0.15.15）。閉じる時は .closing を付けてから hidden にする */
+    overflow:hidden; transform-origin:top;
+    transition:opacity .24s ease, transform .24s ease, max-height .24s ease, margin .24s ease, padding .24s ease }
+  .bc-note #bcNoteText{ flex:1; min-width:0 }
+  .bc-note-x{ flex:none; width:22px; height:22px; padding:0; margin:0; border:0; background:none; cursor:pointer;
+    color:var(--accent-soft); opacity:.7; font-size:18px; line-height:1; border-radius:6px }
+  .bc-note-x:hover{ opacity:1; background:rgba(0,229,204,.14) }
+  .bc-note.closing{ opacity:0; transform:scaleY(.55); max-height:0; margin-top:0; padding-top:0; padding-bottom:0 }
   /* 部屋の種類（部屋名の下の2択）。通知音トグルと同じ控えめな見た目に揃え、行間だけ詰める。 */
   .kind{ display:grid; gap:2px; margin-top:8px }
   .kind .snd-opt{ margin-top:0 }
@@ -1040,7 +1049,7 @@
     </div>
     <div id="crowdNote" class="audio-warn" hidden></div>
     <!-- 配信部屋のときだけ出る説明（自分がいま話せるのかを一言で言う） -->
-    <div id="bcNote" class="bc-note" hidden></div>
+    <div id="bcNote" class="bc-note" hidden><span id="bcNoteText"></span><button id="bcNoteClose" class="bc-note-x" type="button" aria-label="この案内を閉じる">×</button></div>
     <!-- いま枠主が読んでいるお便り。**タブの外**に置く＝どのタブを見ていても、
          いま何が読まれているかが分かる（ラジオで読み上げられているハガキ） -->
     <div id="mailNow" class="mail-now" hidden></div>
@@ -1364,7 +1373,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.14'
+const APP_VERSION = 'v0.15.15'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1463,6 +1472,7 @@ const CALL_INIT = () => ({
   enterSent: false,     // 聞き役：入室通知をこのセッションで送ったか（1 回だけ・v0.15.11）
   ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📣 と 🎙 を描き分けるため）
   bcEnd: null,          // 聞き役側の「配信の終わり」の状態 { phase:'grace'|'ending', since, endAt }（v0.14.0）
+  bcNoteDismissed: '',  // × で閉じた案内の文面（同じ内容の間は閉じたまま・内容が変われば出し直す・v0.15.15）
   bcEndTimer: null,     // 上を1秒ごとに見直すタイマー
   roster: null,         // 最後に受け取った（署名済みの）名簿。新しい人にそのまま転送するために持つ
   rosterT: 0,           // 自分が署名した名簿の時刻（必ず増やす）
@@ -4617,23 +4627,34 @@ const bcEndTick = () => {
 const startBcEndWatch = () => { clearInterval(call.bcEndTimer); call.bcEnd = null; call.bcEndTimer = setInterval(bcEndTick, 1000) }
 const renderBcNote = () => {
   const el = $('bcNote')
-  el.hidden = !call.joinedId || !call.bcast
-  if (el.hidden) return
+  if (!call.joinedId || !call.bcast) { el.hidden = true; return }
+  let txt
   const e = call.bcEnd
   if (e && !call.ownerKey) {
     const left = Math.max(0, Math.ceil((e.phase === 'grace' ? e.since + BC_GRACE_MS - Date.now() : e.endAt - Date.now()) / 1000))
-    el.textContent = e.phase === 'grace'
+    txt = e.phase === 'grace'
       ? '📣 配信者の接続が切れました。戻るのを待っています（あと ' + left + ' 秒）'
       : '📣 配信が終了しました。' + left + ' 秒後に「通話中の部屋」へ戻ります'
-    return
+  } else {
+    txt = call.ownerKey
+      ? '📣 あなたの配信部屋です。ほかの人の声は誰にも流れません（🎙 を押すとその人も話せます）'
+      : call.speakers.has(myPeerId)
+        ? '🎙 あなたは話す許可を持っています'
+        : call.speakers.size
+          ? '📣 配信部屋です。配信者の声だけが流れます（あなたのマイクは使いません）'
+          : '📣 配信部屋です。まだ配信者が来ていません'
   }
-  el.textContent = call.ownerKey
-    ? '📣 あなたの配信部屋です。ほかの人の声は誰にも流れません（🎙 を押すとその人も話せます）'
-    : call.speakers.has(myPeerId)
-      ? '🎙 あなたは話す許可を持っています'
-      : call.speakers.size
-        ? '📣 配信部屋です。配信者の声だけが流れます（あなたのマイクは使いません）'
-        : '📣 配信部屋です。まだ配信者が来ていません'
+  // × で閉じた案内は、**同じ内容の間だけ**閉じたまま（登壇許可・配信終了など内容が変われば出し直す・v0.15.15）。
+  if (call.bcNoteDismissed === txt) { el.hidden = true; return }
+  el.classList.remove('closing')
+  $('bcNoteText').textContent = txt
+  el.hidden = false
+}
+$('bcNoteClose').onclick = () => {
+  const el = $('bcNote')
+  call.bcNoteDismissed = $('bcNoteText').textContent   // この内容は閉じたまま
+  el.classList.add('closing')                          // ふわっと縮む
+  setTimeout(() => { el.hidden = true; el.classList.remove('closing') }, 260)
 }
 
 // 登壇を許された人がマイクを取る。**押されるまで getUserMedia を呼ばない**のが要点で、
