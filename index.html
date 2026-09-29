@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.11
+  ぽっと通話〈実験版〉 v0.15.12
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -677,8 +677,10 @@
   /* 入室通知など中立のシステム行（v0.15.11）：控えめに・中央寄せで会話と区別 */
   .cl-sys{ justify-content:center }
   .cl-sys .cl-text{ flex:none; text-align:center; color:var(--sub); font-size:12px }
-  /* 🤫 静かに入る（ロビーのタップ確認の中）。上に少し余白 */
-  .room-quiet{ margin-top:8px; font-size:12.5px }
+  /* 🤫 静かに入る（ロビーのタップ確認の中）。**独立した 1 行**にする（flex-wrap の行に混ぜると
+     文の span が潰れる・2026-09-30 に実機で発覚）。幅 100% で自分の行を確保し、文とボタンの並びを壊さない。 */
+  .room-quiet{ flex-basis:100%; width:100%; margin:6px 0 2px; font-size:12.5px }
+  .room-quiet input{ flex:none }
   .react-fly{ position:fixed; z-index:60; pointer-events:none; font-size:22px; line-height:1;
     animation:react-fly 1.3s ease-out forwards }
   @keyframes react-fly{
@@ -1362,7 +1364,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.11'
+const APP_VERSION = 'v0.15.12'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
