@@ -1619,7 +1619,8 @@ def T27(r, room):
     a.eval("window.__a_bcast_key = localStorage.getItem('pot-call-bcast')")
     b.eval("localStorage.removeItem('pot-call-bcast')")
     click_join(b)
-    met = a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    # ★③（v0.15.10）：配信者 a は普通の聞き役を見ない＝自分だけ（1）。聞き役 b は配信者が見える＝2。
+    met = a.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
     heard = b.wait_for('%s === 1' % AUDIOS, timeout=DISCOVER)
     time.sleep(3)   # 逆向き（聞き役→配信者）に音が来ないことを見るため、少し置いてから
     gum = b.eval('__T.gum')
@@ -1668,11 +1669,17 @@ def T27b(r, a, b):
     """
     if not a or not b:
         return
-    # ★許可の前に「部屋が 2 人（a と b）に落ち着く」のを待つ（2026-09-29）。T55b の最後で第三者 c が退出するが、
-    #   a はその直前にリロードしていて発見順が揺れるため、c の行が残ったまま下のセレクタ
-    #   （「最初以外の行の 🎙」）を押すと、**居なくなった c に許可して b には何も届かない**ことがある
-    #   （単独では通り、T55b の後だけ落ちる、という形で発覚した）。
-    settled = a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    # ★③（v0.15.10）：配信者は普通の聞き役を見なくなったので、**許可には聞き役の「通話希望」が要る**。
+    #   配信者が募集オン → b が通話希望 → a の一覧に b が 🙋 で現れる → その行の 🎙 で許可（従来どおり）。
+    #   これは T55b の残り c の巻き添え（2026-09-29）も自然に消す：a に出るのは希望者だけ＝b しかいない。
+    show_tab(a, 'settings')
+    a.wait_for("!document.getElementById('reqOpenRow').hidden", timeout=DISCOVER)
+    a.eval("(() => { const c = document.getElementById('reqOpen'); if (!c.checked) c.click() })()")
+    raise_shown = b.wait_for("!document.getElementById('raise').hidden", timeout=DISCOVER)   # 募集が届いてボタンが出る
+    b.eval("document.getElementById('raise').click()")
+    show_tab(a, 'members')
+    settled = (a.wait_for("[...document.querySelectorAll('#members .m-bc')].some(e => e.textContent === '🙋')", timeout=DISCOVER)
+               and a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER))   # self + 希望者 b（③で普通の聞き役は出ない）
     granted = a.eval("(() => { const g = document.querySelector('#members .member:not(:first-child) .m-mic');"
                      " if (g) g.click(); return !!g })()")
     shown = b.wait_for(SPEAK_SHOWN, timeout=SHORT)
@@ -1888,7 +1895,8 @@ def T27h(r, room):
     l = r.open_tab(hash_=o.eval('location.hash'))
     l.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役（鍵を持たない）
     click_join(l)
-    met = o.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    # ★③（v0.15.10）：募集オフ・挙手前は、配信者は普通の聞き役を見ない＝自分だけ（1）。聞き役は配信者（声を出せる人）が見える＝2。
+    met = o.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER) and l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
     # ① 募集オフの間は聞き役に「通話希望」ボタンが出ない
     off_hidden = l.eval("document.getElementById('raise').hidden")
     # ② 配信者が募集オン → 聞き役にボタンが出る
@@ -1934,17 +1942,20 @@ def T27g(r, room):
     l = r.open_tab(hash_=h)
     l.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役（鍵を持たない）
     click_join(l)
-    met = o.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    # ★③（v0.15.10）：配信者は普通の聞き役を見ない。聞き役が入った合図は「🙂 ほか 1 人が聞いています」の出現で見る
+    #   （l 側は配信者が見えて 2 人）。配信者の MEMBERS は自分だけ＝1 のままなので、それを合図には使えない。
+    met = (l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+           and o.wait_for("!!document.querySelector('#members .m-more')", timeout=DISCOVER))
     # ★聞き役を**突然**落とす：about:blank へ飛ばす（アプリの bye は出ない＝実機の「通知を開いて切れた」相当）
     l.call('Page.navigate', url='about:blank')
-    alone = o.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER)   # 配信者から見て 0 人（自分だけ）
+    alone = o.wait_for("!document.querySelector('#members .m-more')", timeout=DISCOVER)   # 聞き役が消えて「ほか N 人」も消える
     # 監視ループ（2 秒周期）を数回分待って、判定が偽のままであること＝壊れ扱いしない
     time.sleep(5)
     not_broken = o.eval('typeof window.__potBroken === "function" && window.__potBroken() === false')
     still = o.eval("!document.getElementById('tabs').hidden")   # 通話画面のまま（リロードもされていない）
     ok = met and alone and not_broken and still
     r.check('T27g', '配信者は聞き役が突然消えても自動リロードしない（cut 枝を発火させない）', ok, 'pass',
-            '2人になった=%s / 聞き役が消えて配信者だけ=%s / 壊れ扱いしない=%s / 通話画面のまま=%s'
+            '聞き役が入った（ほか1人）=%s / 聞き役が消えた=%s / 壊れ扱いしない=%s / 通話画面のまま=%s'
             % (met, alone, not_broken, still))
     click_leave(o)
 
@@ -1978,10 +1989,10 @@ def T28(r, room):
     for t in (a, b):
         t.eval("window.__stay = 1")
         click_join(t)
-    # ★配信部屋のプライバシー（v0.15.6・②）：聞き役の画面は「声を出せる人」だけ＝**自分＋配信者＝2 人**
-    #   （もう一方の聞き役は出さない）。隠したぶんは「🙂 ほか 1 人が聞いています」で数だけ伝える。
-    #   配信者 o は登壇を渡すため全員見える＝3 人。人数（renderCrowd）は別途正確。
-    three = (o.wait_for('%s === 3' % MEMBERS, timeout=DISCOVER)
+    # ★配信部屋のプライバシー（v0.15.6 ②／v0.15.10 ③）：一覧に出るのは「声を出せる人」だけ。
+    #   聞き役 a/b の画面は 自分＋配信者＝2（もう一方の聞き役は出ない・「ほか 1 人」で数だけ）。
+    #   配信者 o も、募集オフ・挙手なしなら普通の聞き役を見ない＝自分だけ＝1（③）。人数は別途正確。
+    three = (o.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER)
              and a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER))
     more_line = a.wait_for("(document.querySelector('#members .m-more') || {}).textContent === '🙂 ほか 1 人が聞いています'", timeout=SHORT)
     # ★隠れ聞き役のコメントは認知される（v0.15.7）：一覧に出ない b がコメントしても、
@@ -2001,7 +2012,7 @@ def T28(r, room):
     note = a.eval(BC_NOTE)
     ok = three and more_line and hidden_chat and met and gum == 0 and audios == 0 and stayed and '配信者' in note and row_gone
     r.check('T28', '配信者が去った配信部屋では誰の音も流れない', ok, 'pass',
-            '配信者3/聞き役2=%s / ほかN人=%s / 隠れ聞き役のコメントがひとことに出る=%s / 配信者が去って1人=%s / getUserMedia=%s回 / 音声要素=%s / リロードされていない=%s / 説明=%r / 2択を出さない=%s'
+            '配信者1/聞き役2=%s / ほかN人=%s / 隠れ聞き役のコメントがひとことに出る=%s / 配信者が去って1人=%s / getUserMedia=%s回 / 音声要素=%s / リロードされていない=%s / 説明=%r / 2択を出さない=%s'
             % (three, more_line, hidden_chat, met, gum, audios, stayed, note[:24], row_gone))
     for t in (a, b):
         click_leave(t)
