@@ -1939,18 +1939,24 @@ def T28(r, room):
     for t in (a, b):
         t.eval("window.__stay = 1")
         click_join(t)
-    three = a.wait_for('%s === 3' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 3' % MEMBERS, timeout=DISCOVER)
+    # ★配信部屋のプライバシー（v0.15.6・②）：聞き役の画面は「声を出せる人」だけ＝**自分＋配信者＝2 人**
+    #   （もう一方の聞き役は出さない）。隠したぶんは「🙂 ほか 1 人が聞いています」で数だけ伝える。
+    #   配信者 o は登壇を渡すため全員見える＝3 人。人数（renderCrowd）は別途正確。
+    three = (o.wait_for('%s === 3' % MEMBERS, timeout=DISCOVER)
+             and a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER))
+    more_line = a.wait_for("(document.querySelector('#members .m-more') || {}).textContent === '🙂 ほか 1 人が聞いています'", timeout=SHORT)
     click_leave(o)   # 配信者が去る
-    met = a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    # 配信者が去ると声を出せる人がいなくなる＝聞き役の画面は自分だけ（1）＋「ほか 1 人」。o は退出済み
+    met = a.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER)
     time.sleep(30)   # 自動復帰の判定（25秒）を越えて観測する
     gum = a.eval('__T.gum') + b.eval('__T.gum')
     audios = a.eval(AUDIOS) + b.eval(AUDIOS)
     stayed = a.eval('window.__stay === 1') and b.eval('window.__stay === 1')
     note = a.eval(BC_NOTE)
-    ok = three and met and gum == 0 and audios == 0 and stayed and '配信者' in note and row_gone
+    ok = three and more_line and met and gum == 0 and audios == 0 and stayed and '配信者' in note and row_gone
     r.check('T28', '配信者が去った配信部屋では誰の音も流れない', ok, 'pass',
-            '3人=%s / 配信者が去って2人=%s / getUserMedia=%s回 / 音声要素=%s / リロードされていない=%s / 説明=%r / 部屋の種類の2択を出さない=%s'
-            % (three, met, gum, audios, stayed, note[:24], row_gone))
+            '配信者3/聞き役2=%s / ほかN人=%s / 配信者が去って1人=%s / getUserMedia=%s回 / 音声要素=%s / リロードされていない=%s / 説明=%r / 2択を出さない=%s'
+            % (three, more_line, met, gum, audios, stayed, note[:24], row_gone))
     for t in (a, b):
         click_leave(t)
 

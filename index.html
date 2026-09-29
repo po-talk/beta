@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.5
+  ぽっと通話〈実験版〉 v0.15.6
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -680,6 +680,8 @@
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
   .member.virtual{ box-shadow:0 0 0 1px var(--accent-dim) inset }   /* 読み上げの仮想メンバー（🗣 つくよみちゃん）。人ではない印に薄い枠 */
+  /* 「ほか N 人が聞いています」（v0.15.6）：一覧に出さない聞き役の数だけを名前なしで示す。人ではないので控えめに */
+  .m-more{ padding:7px 12px; font-size:13px; color:var(--sub); border-radius:10px; background:var(--log) }
   /* 仮想行の顔＝公式イラスト（img/tsukuyomi-128.png）。絵文字と同じ 1em の丸で置き、跳ね（transform）も人と揃う。
      規約上「自作アプリ内の顔グラフィック」は可・アプリアイコンやファビコンには使わない（THIRD_PARTY_NOTICES.md） */
   .m-emoji img.m-face{ width:1em; height:1em; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:-0.12em }
@@ -1344,7 +1346,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.5'
+const APP_VERSION = 'v0.15.6'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2363,7 +2365,14 @@ const renderMembers = () => {
     call.bcast ? { mark: bcMark(myPeerId), grant: call.ownerKey ? { hidden: true } : null } : null)
   if (call.ownerKey) ownerRow = selfRow
   // peers（接続の事実）を軸にし、プロフィール未着の相手は仮表示にする（経路も未着なら undefined＝アイコンなし）
+  let hiddenListeners = 0   // 配信部屋で一覧に出さなかった聞き役の数（下の「ほか N 人」で数だけ伝える）
   call.peers.forEach(id => {
+    // ★配信部屋のプライバシー（v0.15.6・②）：自分がオーナーでなければ「声を出せない聞き役」は一覧に出さない。
+    //   黙って聞く人を**ほかの聞き役から見えなく**する（＝入っても居座りが観測されない・抜けても気づかれない）。
+    //   人数は renderCrowd と下の「ほか N 人が聞いています」で保つ（"誰が"は隠すが"何人"は出す＝利用者の線引き）。
+    //   オーナーは登壇を渡す相手を選ぶため全員見える（配信者にも隠す③は「挙手」の実装と一緒に後日）。
+    //   配信者本人（ownerPeer）は名簿が届く前でも隠さない（speakers が空の一瞬でブロードキャスターが消えないように）。
+    if (call.bcast && !call.ownerKey && id !== call.ownerPeer && !call.speakers.has(id)) { hiddenListeners++; return }
     const p = call.profiles.get(id) || {}
     const ig = call.ignored.has(id)
     const bc = !call.bcast ? null : {
@@ -2395,6 +2404,13 @@ const renderMembers = () => {
     av.append(im)
     emojiEls.set('tts', av)
     if (ownerRow) ownerRow.after(v); else membersEl.appendChild(v)
+  }
+  // ★「ほか N 人が聞いています」（v0.15.6・②）：一覧に出さなかった聞き役の数だけを、名前なしで伝える。
+  //   賑わい（人数）は残しつつ、誰が居るかは隠す。**.member は付けない**＝人数の数え方（MEMBERS）に混ぜない。
+  if (hiddenListeners > 0) {
+    const more = document.createElement('div'); more.className = 'm-more'
+    more.textContent = '🙂 ほか ' + hiddenListeners + ' 人が聞いています'
+    membersEl.appendChild(more)
   }
   renderBcNote()
 }
