@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.7
+  ぽっと通話〈実験版〉 v0.15.8
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -681,7 +681,8 @@
   .member.ignored{ opacity:.5 }
   .member.virtual{ box-shadow:0 0 0 1px var(--accent-dim) inset }   /* 読み上げの仮想メンバー（🗣 つくよみちゃん）。人ではない印に薄い枠 */
   /* 「ほか N 人が聞いています」（v0.15.6）：一覧に出さない聞き役の数だけを名前なしで示す。人ではないので控えめに */
-  .m-more{ padding:7px 12px; font-size:13px; color:var(--sub); border-radius:10px; background:var(--log) }
+  /* position:relative は必須：隠れ聞き役の吹き出し（.chat-bubble・position:absolute）の基準になる（v0.15.8） */
+  .m-more{ position:relative; padding:7px 12px; font-size:13px; color:var(--sub); border-radius:10px; background:var(--log) }
   /* 仮想行の顔＝公式イラスト（img/tsukuyomi-128.png）。絵文字と同じ 1em の丸で置き、跳ね（transform）も人と揃う。
      規約上「自作アプリ内の顔グラフィック」は可・アプリアイコンやファビコンには使わない（THIRD_PARTY_NOTICES.md） */
   .m-emoji img.m-face{ width:1em; height:1em; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:-0.12em }
@@ -1346,7 +1347,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.7'
+const APP_VERSION = 'v0.15.8'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
