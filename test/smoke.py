@@ -1907,7 +1907,7 @@ def T27h(r, room):
     # ③ 聞き役が「通話希望」→ 配信者のメンバーに 🙋
     l.eval("document.getElementById('raise').click()")
     mark = o.wait_for("[...document.querySelectorAll('#members .m-bc')].some(e => e.textContent === '🙋')", timeout=SHORT)
-    label_on = l.eval("document.querySelector('#raise span').textContent") == '通話希望を取り消す'
+    label_on = l.eval("document.querySelector('#raise span').textContent") == '取り消す'
     # ④ 配信者が 🎙 で許可 → 🙋 が消えて 🎙、聞き役に「マイクを使う」
     granted = o.eval("(() => { const g = document.querySelector('#members .member:not(:first-child) .m-mic');"
                      " if (g) g.click(); return !!g })()")
