@@ -1945,6 +1945,13 @@ def T28(r, room):
     three = (o.wait_for('%s === 3' % MEMBERS, timeout=DISCOVER)
              and a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER))
     more_line = a.wait_for("(document.querySelector('#members .m-more') || {}).textContent === '🙂 ほか 1 人が聞いています'", timeout=SHORT)
+    # ★隠れ聞き役のコメントは認知される（v0.15.7）：一覧に出ない b がコメントしても、
+    #   a の「ひとこと」（タイムライン）には出る（リストには載せない・コメントはひとことに出る＝利用者の原則）。
+    #   吹き出しは「ほか N 人」の行に一瞬出る（誰が、は名乗らない）。ここではタイムライン到達を固定する。
+    show_tab(b, 'chat'); show_tab(a, 'chat')
+    b.eval("(() => { const i = document.getElementById('chatText'); i.value = 'きこえてる？'; document.getElementById('chatSend').click() })()")
+    hidden_chat = a.wait_for("[...document.querySelectorAll('#chatLog .cl-text')].some(e => e.textContent === 'きこえてる？')", timeout=SHORT + 5)
+    show_tab(a, 'members'); show_tab(b, 'members')
     click_leave(o)   # 配信者が去る
     # 配信者が去ると声を出せる人がいなくなる＝聞き役の画面は自分だけ（1）＋「ほか 1 人」。o は退出済み
     met = a.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER)
@@ -1953,10 +1960,10 @@ def T28(r, room):
     audios = a.eval(AUDIOS) + b.eval(AUDIOS)
     stayed = a.eval('window.__stay === 1') and b.eval('window.__stay === 1')
     note = a.eval(BC_NOTE)
-    ok = three and more_line and met and gum == 0 and audios == 0 and stayed and '配信者' in note and row_gone
+    ok = three and more_line and hidden_chat and met and gum == 0 and audios == 0 and stayed and '配信者' in note and row_gone
     r.check('T28', '配信者が去った配信部屋では誰の音も流れない', ok, 'pass',
-            '配信者3/聞き役2=%s / ほかN人=%s / 配信者が去って1人=%s / getUserMedia=%s回 / 音声要素=%s / リロードされていない=%s / 説明=%r / 2択を出さない=%s'
-            % (three, more_line, met, gum, audios, stayed, note[:24], row_gone))
+            '配信者3/聞き役2=%s / ほかN人=%s / 隠れ聞き役のコメントがひとことに出る=%s / 配信者が去って1人=%s / getUserMedia=%s回 / 音声要素=%s / リロードされていない=%s / 説明=%r / 2択を出さない=%s'
+            % (three, more_line, hidden_chat, met, gum, audios, stayed, note[:24], row_gone))
     for t in (a, b):
         click_leave(t)
 

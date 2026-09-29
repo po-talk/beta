@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.6
+  ぽっと通話〈実験版〉 v0.15.7
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1346,7 +1346,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.6'
+const APP_VERSION = 'v0.15.7'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2408,7 +2408,7 @@ const renderMembers = () => {
   // ★「ほか N 人が聞いています」（v0.15.6・②）：一覧に出さなかった聞き役の数だけを、名前なしで伝える。
   //   賑わい（人数）は残しつつ、誰が居るかは隠す。**.member は付けない**＝人数の数え方（MEMBERS）に混ぜない。
   if (hiddenListeners > 0) {
-    const more = document.createElement('div'); more.className = 'm-more'
+    const more = document.createElement('div'); more.className = 'm-more'; more.id = 'membersMore'
     more.textContent = '🙂 ほか ' + hiddenListeners + ' 人が聞いています'
     membersEl.appendChild(more)
   }
@@ -4232,23 +4232,27 @@ const REACT_MAX_FLY   = 14    // 同時に浮かべる上限（DOM を溢れさ�
 
 // 押した人のアバターから浮かべる。uid は参加者リストの行キー（自分は 'self'）。
 const flyReaction = (uid, idx) => {
-  const av = emojiEls.get(uid)
-  // 同時上限は**音にも効かせる**（連打で音が重なるのを防ぐ門番。ここは従来どおり）
-  if (!av || document.querySelectorAll('.react-fly').length >= REACT_MAX_FLY) return
-  const r = av.getBoundingClientRect()
-  // 画面に出ていないとき（他のタブを見ている・畳まれている）は**飛ばさないが、音は鳴らす**。
-  // タブに分けた結果、メンバーを見ていない間はリアクションの気配が音しか無くなるため
-  // （2026-08-16 の判断。それ以前は「絵文字が出ないなら音も出さない」だった）。
-  if (r.width) {
-    const el = document.createElement('div')
-    el.className = 'react-fly'
-    el.textContent = REACTIONS[idx]
-    el.style.left = (r.left + r.width / 2 + (Math.random() * 18 - 9)) + 'px'
-    el.style.top = (r.top - 4) + 'px'
-    document.body.appendChild(el)
-    setTimeout(() => el.remove(), 1400)
+  // 同時上限は**音にも効かせる**（連打で音が重なるのを防ぐ門番。ここは従来どおり・上限では音も出さない）
+  if (document.querySelectorAll('.react-fly').length >= REACT_MAX_FLY) return
+  // 押した人の行の絵文字から浮かべる。配信部屋で一覧に出ない聞き役（v0.15.6・②）は行が無いので
+  // 「ほか N 人」の行から飛ばす＝「隠れている誰かが今リアクションした」が一瞬伝わる（誰かは名乗らない）。
+  const av = emojiEls.get(uid) || $('membersMore')
+  if (av) {
+    const r = av.getBoundingClientRect()
+    // 画面に出ていないとき（他のタブを見ている・畳まれている）は**飛ばさないが、音は鳴らす**。
+    // タブに分けた結果、メンバーを見ていない間はリアクションの気配が音しか無くなるため
+    // （2026-08-16 の判断。それ以前は「絵文字が出ないなら音も出さない」だった）。
+    if (r.width) {
+      const el = document.createElement('div')
+      el.className = 'react-fly'
+      el.textContent = REACTIONS[idx]
+      el.style.left = (r.left + r.width / 2 + (Math.random() * 18 - 9)) + 'px'
+      el.style.top = (r.top - 4) + 'px'
+      document.body.appendChild(el)
+      setTimeout(() => el.remove(), 1400)
+    }
   }
-  soundReact(idx)
+  soundReact(idx)   // 音は必ず鳴らす（行が無い・画面外でも＝匿名の気配は残す）
 }
 const sendReaction = idx => {
   if (!call.joinedId || !call.reactAction) return
@@ -4311,12 +4315,17 @@ const logChat = (uid, text) => {
 }
 
 const showBubble = (uid, text) => {
-  // **行そのものに入れる。**座標を計算して body に置くと、あとでレイアウトが動いたときに
-  // 取り残される（上の CSS のコメント参照）。行に入れておけば一緒に動く。
-  const row = emojiEls.get(uid)?.parentElement
-  if (!row || !text) return
-  logChat(uid, text)   // ★吹き出しの同時上限に当たっても、タイムラインには必ず残す（見逃しの受け皿なので）
+  if (!text) return
+  // ★タイムライン（ひとこと）は**行の有無に関係なく必ず残す**。配信部屋で一覧に出ない聞き役
+  //   （v0.15.6・②）がコメントしても、コメントは認知される＝ひとことに出る（利用者の原則
+  //   「リストに載るのはマイクを持つ人・コメントはひとことに出るだけ」）。以前はここが
+  //   `if (!row) return` で logChat より前にあり、隠れ聞き役のコメントが**タイムラインからも消えていた**。
+  logChat(uid, text)
   if (document.querySelectorAll('.chat-bubble').length >= CHAT_MAX_BUBBLE) return
+  // 吹き出し（一瞬の浮かび）は行に入れる。その人の行が無ければ（隠れ聞き役）「ほか N 人」の行に
+  //   浮かべる＝「隠れている誰かが今しゃべった」が一瞬伝わる（誰かは名乗らない＝タイムライン側に名前）。
+  const row = emojiEls.get(uid)?.parentElement || $('membersMore')
+  if (!row) return                          // 行も「ほか N 人」も無い（＝自分が隠れる側でもない普通の場面で行未着）なら吹き出しは省く
   const el = document.createElement('div')
   el.className = 'chat-bubble'
   el.textContent = text                    // ★ここを innerHTML にしないこと
