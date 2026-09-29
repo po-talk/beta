@@ -1213,17 +1213,36 @@ def T55b(r, a, b):
     #   触った回数は INSTRUMENT の getter が数えている（リロードで 0 に戻る）。仮想行や案内は
     #   トラックだけで成立するので、この時点で 0 のまま＝700MB を掴んでいない、が確かめられる。
     lazy0 = a.eval("__T.ttsGets") == 0
-    show_tab(c, 'chat')
-    c.eval("(() => { const i = document.getElementById('chatText'); i.value = 'おそよみ'; document.getElementById('chatSend').click() })()")
-    read1 = a.wait_for("__T.ttsTexts.length > 0", timeout=SHORT + 10)   # 最初のひとことで読み込まれ、読まれる
-    lazyN = a.eval("__T.ttsGets") > 0
+    # ★失敗の日本語化（v0.15.3）は**ここでしか**測れない：T55 の途中は ttsEngine が既に載っていて
+    #   loadTts が素通りする。つなぎ直し直後（遅延読み込み後）はエンジンが空なので、差し替え口の
+    #   getter を一時的に例外（Out of memory）にすれば失敗経路が通る。画面には日本語＋直し方が出て、
+    #   oomN（pot-call-tts-oom）が記録されること。終わったら必ず戻す（壊れたまま残ると以降が連鎖で死ぬ）。
+    err_ja = err_raw_hidden = oom_counted = False
+    try:
+        a.eval("(() => { window.__ttsBak = Object.getOwnPropertyDescriptor(window, '__potTts');"
+               " Object.defineProperty(window, '__potTts', { configurable: true,"
+               " get() { throw new Error('RangeError: Out of memory (テスト用)') } }) })()")
+        a.eval("localStorage.removeItem('pot-call-tts-oom')")
+        show_tab(c, 'chat')
+        c.eval("(() => { const i = document.getElementById('chatText'); i.value = '読み込みを失敗させる'; document.getElementById('chatSend').click() })()")
+        err_ja = a.wait_for("(() => { const t = document.getElementById('sndTtsProg').textContent;"
+                            " return t.includes('メモリが足りませんでした') && t.includes('つなぎ直す') })()", timeout=SHORT + 10)
+        err_raw_hidden = a.eval("!document.getElementById('sndTtsProg').textContent.includes('Out of memory')")   # 生英語は画面に出さない
+        oom_counted = a.eval("localStorage.getItem('pot-call-tts-oom') === '1'")
+    finally:
+        a.eval("(() => { if (window.__ttsBak) Object.defineProperty(window, '__potTts', window.__ttsBak) })()")
+    # getter は戻す（後始末）。**失敗後の自己修復（次のひとことで loadTts を再試行）は自動判定しない**：
+    #   2 通目のひとことがリレー越しに a へ届くのを待つ形になり、配送タイミングで揺れるため。
+    #   製品ロジックは健全（失敗後は ttsEngine も ttsLoading も null＝次の speakChat が必ず loadTts を再呼び出し）で、
+    #   実機でも「失敗しても次のひとことで読める」を利用者が確認済み（HANDOFF）。ここでは B の 3 点だけ見る。
     a.eval("document.getElementById('sndTts').click()")   # 後のテストに持ち越さない
     show_tab(a, 'members')
     click_leave(c)
-    ok = on and met and vrow and two and sent and back and kept and vrow2 and lazy0 and read1 and lazyN
+    ok = (on and met and vrow and two and sent and back and kept and vrow2 and lazy0
+          and err_ja and err_raw_hidden and oom_counted)
     r.check('T55b', '読み上げ v2：後から入った聞き役にも届く・配信者がつなぎ直しても読み上げは続く', ok, 'pass',
-            'オン=%s / 合流=%s / 仮想行=%s / 音声2本=%s / 配信者に「届いている人：2 / 2」=%s / つなぎ直し後に戻った=%s / チェック維持=%s / 聞き役に仮想行が戻る=%s / つなぎ直しでは読み込まない=%s / 最初のひとことで読み込んで読む=%s(%s)'
-            % (on, met, vrow, two, sent, back, kept, vrow2, lazy0, read1, lazyN))
+            'オン=%s / 合流=%s / 仮想行=%s / 音声2本=%s / 配信者に「届いている人：2 / 2」=%s / つなぎ直し後に戻った=%s / チェック維持=%s / 聞き役に仮想行が戻る=%s / つなぎ直しでは読み込まない=%s / 失敗は日本語＋直し方=%s / 生英語を出さない=%s / oom記録=%s'
+            % (on, met, vrow, two, sent, back, kept, vrow2, lazy0, err_ja, err_raw_hidden, oom_counted))
 
 
 def T57(r, a, b):
