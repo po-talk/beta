@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.8
+  ぽっと通話〈実験版〉 v0.15.9
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -234,6 +234,10 @@
      参加ボタンと同じ色（＝これから許可ダイアログが出る操作）にしてある */
   #speak{ background:var(--join-bg); color:var(--join-fg); display:none; align-items:center; justify-content:center; gap:9px }
   #speak svg{ width:22px; height:22px; flex:none }
+  /* 通話希望ボタン（v0.15.9）：聞き役が配信者に手を挙げる。押している間（.on）は色を反転して「挙げている」と分かる */
+  #raise{ display:flex; align-items:center; justify-content:center; gap:9px }
+  #raise svg{ width:22px; height:22px; flex:none }
+  #raise.on{ background:var(--accent); color:#fff; border-color:transparent }
   /* 退出＝朱色（ティールの補色寄りで相性がよい）。少しだけ発光させる */
   #leave{ background:var(--red); color:#fff; display:none; box-shadow:0 2px 14px var(--red-glow) }
   /* アイコン＋文字を中央寄せ。参加時に JS が display:flex にする（未参加は none のまま） */
@@ -1118,6 +1122,9 @@
         ミュート中でも読みます。人が話している間は待って、間が空いてから読みます。この設定は保存されず、ページを開くたびにオフから始まります。</p>
       <!-- 名前を読まない（v0.14.55・利用者の要望）。こちらは保存する（読み方の好みなので） -->
       <label class="snd-opt" id="sndTtsNameRow" hidden><input type="checkbox" id="sndTtsNoName"> 🙊 投稿した人の名前は読まない</label>
+      <!-- 通話希望者募集（v0.15.9・配信者だけ）：オンにすると聞き役に「通話希望」ボタンが出て、希望した人が
+           メンバーに 🙋 で並ぶ。配信者は従来どおり 🎙 で許可する（許可後は本人が「マイクを使う」でミュート解除）。 -->
+      <label class="snd-opt" id="reqOpenRow" hidden><input type="checkbox" id="reqOpen"> 🙋 通話希望者募集（聞き役が「通話希望」を出せます）</label>
       <p class="vol-note" id="sndTtsProg" hidden></p>
       <p class="vol-note" id="sndTtsSent" hidden></p>
       <p class="vol-note" id="sndTtsCrash" hidden></p>
@@ -1153,6 +1160,9 @@
     <div class="actions">
       <!-- 配信部屋で登壇を許されたときだけ出る。**押すまでマイクは取らない**（許可ダイアログが
            何の脈絡もなく出るのを避ける＝聞き役でいるつもりの人を驚かせない） -->
+      <!-- 通話希望（v0.15.9）：配信者が「通話希望者募集」をオンのときだけ聞き役に出る。押すと配信者に手が挙がり、
+           配信者が 🎙 で許可すると下の「マイクを使う」に変わる（押すまでマイクは取らない）。 -->
+      <button id="raise" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11V5a2 2 0 0 1 4 0v6"/><path d="M13 7a2 2 0 0 1 4 0v6a6 6 0 0 1-6 6H9a5 5 0 0 1-5-5c0-1 .5-2 1.5-2.5"/></svg><span>通話希望</span></button>
       <button id="speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg><span>マイクを使う</span></button>
       <button id="mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line class="mic-slash" x1="4" y1="3" x2="20" y2="21"/></svg><span class="lbl">ミュート</span></button>
       <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
@@ -1347,7 +1357,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.8'
+const APP_VERSION = 'v0.15.9'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1438,6 +1448,10 @@ const CALL_INIT = () => ({
   ownerPub: '',         // 自分がオーナーのときの公開鍵（base64url raw）。名簿に添えて配る
   grants: new Set(),    // **オーナーの原本**：話してよい人の peerId（自分を含む）
   speakers: new Set(),  // **検証済みの名簿**：この部屋で音を鳴らしてよい人の peerId
+  reqOpen: false,       // 配信者：マイクのリクエストを受け付けているか（設定のスイッチ・v0.15.9）
+  requests: new Set(),  // 配信者：マイクを希望している聞き役の peerId（挙手）。許可したら消す
+  reqOpenSeen: false,   // 聞き役：配信者がいま受け付けているか（🙋 ボタンの出し入れ）
+  myReq: false,         // 聞き役：自分が挙手しているか
   ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📣 と 🎙 を描き分けるため）
   bcEnd: null,          // 聞き役側の「配信の終わり」の状態 { phase:'grace'|'ending', since, endAt }（v0.14.0）
   bcEndTimer: null,     // 上を1秒ごとに見直すタイマー
@@ -2360,7 +2374,7 @@ const renderMembers = () => {
   let ownerRow = null   // 読み上げの仮想行はこの直下に置く
   // 配信部屋の印。配信者は 📣、あとから許された人は 🎙、それ以外は無印（＝聞き役）。
   // **誰が配信者かも署名の中に入っている**ので、自分の行か相手の行かで判断を変えなくてよい。
-  const bcMark = id => !call.bcast ? '' : (id && id === call.ownerPeer ? '📣' : call.speakers.has(id) ? '🎙' : '')
+  const bcMark = id => !call.bcast ? '' : (id && id === call.ownerPeer ? '📣' : call.speakers.has(id) ? '🎙' : (call.ownerKey && call.requests.has(id) ? '🙋' : ''))
   // 聞き役はマイクを持っていないので、ミュート印を出しておく（一覧の見え方を「話せない人」で揃える）
   const selfRow = add('self', profile.emoji, profile.name, true, micOff(), stageOf(), call.usingRelay, null,
     call.bcast ? { mark: bcMark(myPeerId), grant: call.ownerKey ? { hidden: true } : null } : null)
@@ -3604,7 +3618,23 @@ const syncTtsRow = () => {
   $('sndTtsRow').hidden = !ttsAllowed()
   $('sndTtsNote').hidden = !(ttsAllowed() && sndTts)
   $('sndTtsNameRow').hidden = !(ttsAllowed() && sndTts)
+  // 通話希望者募集（v0.15.9）は配信部屋のオーナーのときだけ出す。部屋を出た／オーナーでなくなったら畳んで締め切る
+  const own = !!call.joinedId && call.bcast && !!call.ownerKey
+  $('reqOpenRow').hidden = !own
+  if (!own && call.reqOpen) { call.reqOpen = false; call.requests.clear() }
+  $('reqOpen').checked = call.reqOpen
   renderTtsProg(); renderTtsSent()
+}
+// 配信者：いまの募集状態を配る（target 省略＝全員・grantAction はオーナー検証済みの経路）。
+const sendReqOpen = target => { if (call.ownerKey && call.grantAction) sendTo(call.grantAction, { k: 'reqopen', on: !!call.reqOpen }, target) }
+{
+  const box = $('reqOpen')
+  box.onchange = () => {
+    call.reqOpen = box.checked
+    if (!call.reqOpen) call.requests.clear()   // 締め切ったら希望はいったんクリア（また募集すれば挙げ直せる）
+    sendReqOpen()          // 全員へ（聞き役の「通話希望」ボタンの出し入れ）
+    renderMembers()        // 🙋 の付け外し
+  }
 }
 {
   const box = $('sndTtsNoName')
@@ -4413,6 +4443,7 @@ const canHear = id => !call.ignored.has(id) && (!call.bcast || call.speakers.has
 const setSpeakers = ids => {
   const next = new Set(ids), was = call.speakers
   call.speakers = next
+  if (next.has(myPeerId)) call.myReq = false   // 許可された＝もう「通話希望」は要らない（v0.15.9）
   call.peers.forEach(id => {
     const now = next.has(id), before = was.has(id)
     if (before && !now) { dropAudios(id); removeAnalyser(id); call.nudges.delete(id) }   // 降格＝その場で黙らせる
@@ -4511,6 +4542,7 @@ const toggleGrant = id => {
   } else {
     if (call.grants.size >= SPEAKER_MAX) { showPeerNotice('🎙 同時に話せるのは ' + SPEAKER_MAX + ' 人までです'); return }
     call.grants.add(id)
+    call.requests.delete(id)   // 希望者を許可＝話せる人になったので 🙋 は外す（v0.15.9）
     const tok = genGrantToken()
     call.grantTokens.set(tok, Date.now() + GRANT_TOKEN_TTL_MS)
     call.grantPeerTokens.set(id, tok)
@@ -4571,6 +4603,18 @@ const renderSpeak = () => {
   const may = !!call.joinedId && call.bcast && call.speakers.has(myPeerId)
   $('speak').style.display = may && !call.stream ? 'flex' : 'none'
   $('mute').style.display = call.joinedId && call.stream ? 'flex' : 'none'
+  // 通話希望（v0.15.9）：配信者が募集中で、自分がまだ話せる側でないときだけ。押すと手が挙がる／取り消せる。
+  const canRaise = !!call.joinedId && call.bcast && !call.ownerKey && call.reqOpenSeen && !call.speakers.has(myPeerId)
+  const rb = $('raise')
+  rb.hidden = !canRaise
+  rb.classList.toggle('on', call.myReq)
+  rb.querySelector('span').textContent = call.myReq ? '通話希望を取り消す' : '通話希望'
+}
+$('raise').onclick = () => {
+  if (!call.joinedId || !call.bcast || call.ownerKey || !call.ownerPeer) return
+  call.myReq = !call.myReq
+  sendTo(call.grantAction, { k: call.myReq ? 'raise' : 'lower' }, call.ownerPeer)
+  renderSpeak()
 }
 const startSpeaking = async () => {
   if (call.stream || !call.joinedId || !call.room) return
@@ -4950,6 +4994,21 @@ const wireRoom = () => {
   call.grantAction = call.room.makeAction('grant')
   call.grantAction.onMessage = (d, { peerId }) => {
     if (!call.bcast || !d || typeof d !== 'object') return
+    // リスナー側：枠主から「通話希望者募集」の状態が届いた（v0.15.9）。オーナー本人からのものだけ信じる。
+    if (d.k === 'reqopen') {
+      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      call.reqOpenSeen = !!d.on
+      if (!call.reqOpenSeen) call.myReq = false   // 締め切られたら自分の希望も畳む
+      renderSpeak()
+      return
+    }
+    // 枠主側：聞き役が「通話希望」を出した／取り消した（v0.15.9）。既に話せる人は無視。
+    if (d.k === 'raise' || d.k === 'lower') {
+      if (!call.ownerKey || call.speakers.has(peerId)) return
+      if (d.k === 'raise') call.requests.add(peerId); else call.requests.delete(peerId)
+      renderMembers()
+      return
+    }
     // リスナー側：枠主からトークンを受け取った
     if (d.k === 'grant' && typeof d.tok === 'string') {
       if (!call.ownerPeer || peerId !== call.ownerPeer) return
@@ -5049,7 +5108,7 @@ const wireRoom = () => {
     flyReaction(peerId, data)
   }
 
-  call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id); ttsAnnounce(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
+  call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id); ttsAnnounce(id); if (call.reqOpen) sendReqOpen(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
   call.room.onPeerLeave = id => {
     // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
     // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
@@ -5059,7 +5118,7 @@ const wireRoom = () => {
       call.lostPeer = true        // 自動復帰の判定材料（普通の退出と区別する）
     }
     call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id)
-    call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id)
+    call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id); call.requests.delete(id)
     call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
     call.ttsSent.delete(id); call.ttsSentStream.delete(id); call.ttsResentAt.delete(id)   // 読み上げを配った記録（入り直せば別 ID＝改めて {ok} を待つ）
     if (id === call.ownerPeer && call.ttsAnn) { call.ttsAnn = null; call.ttsTrackIds.clear(); dropAudios('tts'); removeAnalyser('tts') }   // 配信者が抜けた＝仮想行も畳む
