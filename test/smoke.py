@@ -87,12 +87,14 @@ INSTRUMENT = r"""
   // ひとことの読み上げ v2（v0.14.42）。実エンジン（piper-plus・約 100MB）は落とさず、アプリの差し替え口 window.__potTts に
   // 偽エンジン（440Hz・0.6 秒の PCM）を入れる。読んだ文面は T.ttsTexts に控える（音は聞けないので）。
   T.ttsTexts = [];
-  window.__potTts = { synth: async text => {
+  T.ttsGets = 0;   // loadTts が差し替え口を読んだ回数（遅延読み込みの見張り・v0.15.2。リロードで 0 に戻る）
+  const __fakeTts = { synth: async text => {
     T.ttsTexts.push(text);
     const n = 33075, a = new Float32Array(n);   // 1.5 秒（相手の行が光るのを見る余裕）
     for (let i = 0; i < n; i++) a[i] = Math.sin(i / 22050 * 440 * 2 * Math.PI) * 0.3;
     return { samples: a, sampleRate: 22050 };
   } };
+  Object.defineProperty(window, '__potTts', { configurable: true, get() { T.ttsGets++; return __fakeTts; } });
   // 通知音は WebAudio の発振器で作る。鳴ったかどうかはこれで数えられる（音は聞けないので）。
   T.osc = 0;
   const origOsc = AudioContext.prototype.createOscillator;
@@ -1207,13 +1209,21 @@ def T55b(r, a, b):
     kept = a.wait_for("document.getElementById('sndTts').checked && !document.getElementById('sndTtsRow').hidden", timeout=SHORT)
     c.eval("document.querySelectorAll('#members .member.virtual').length")   # 古い行は配信者が抜けた時点で消えている
     vrow2 = c.wait_for("!!document.querySelector('#members .member.virtual')", timeout=DISCOVER)
+    # ★遅延読み込み（v0.15.2）：つなぎ直しの引き継ぎではエンジン（差し替え口）に触らない。
+    #   触った回数は INSTRUMENT の getter が数えている（リロードで 0 に戻る）。仮想行や案内は
+    #   トラックだけで成立するので、この時点で 0 のまま＝700MB を掴んでいない、が確かめられる。
+    lazy0 = a.eval("__T.ttsGets") == 0
+    show_tab(c, 'chat')
+    c.eval("(() => { const i = document.getElementById('chatText'); i.value = 'おそよみ'; document.getElementById('chatSend').click() })()")
+    read1 = a.wait_for("__T.ttsTexts.length > 0", timeout=SHORT + 10)   # 最初のひとことで読み込まれ、読まれる
+    lazyN = a.eval("__T.ttsGets") > 0
     a.eval("document.getElementById('sndTts').click()")   # 後のテストに持ち越さない
     show_tab(a, 'members')
     click_leave(c)
-    ok = on and met and vrow and two and sent and back and kept and vrow2
+    ok = on and met and vrow and two and sent and back and kept and vrow2 and lazy0 and read1 and lazyN
     r.check('T55b', '読み上げ v2：後から入った聞き役にも届く・配信者がつなぎ直しても読み上げは続く', ok, 'pass',
-            'オン=%s / 合流=%s / 仮想行=%s / 音声2本=%s / 配信者に「届いている人：2 / 2」=%s / つなぎ直し後に戻った=%s / チェック維持=%s / 聞き役に仮想行が戻る=%s'
-            % (on, met, vrow, two, sent, back, kept, vrow2))
+            'オン=%s / 合流=%s / 仮想行=%s / 音声2本=%s / 配信者に「届いている人：2 / 2」=%s / つなぎ直し後に戻った=%s / チェック維持=%s / 聞き役に仮想行が戻る=%s / つなぎ直しでは読み込まない=%s / 最初のひとことで読み込んで読む=%s(%s)'
+            % (on, met, vrow, two, sent, back, kept, vrow2, lazy0, read1, lazyN))
 
 
 def T57(r, a, b):
@@ -1458,16 +1468,17 @@ def T42(r, room):
                     " return a && a.srcObject ? a.srcObject.getAudioTracks().length : 0 })()")
     # ★スピーカーへ直接繋いでいないこと（繋ぐと二重に鳴る／iPhone で音が細る）
     direct = t.eval('__T.edges.some(([x, y]) => y instanceof AudioDestinationNode)')
-    # ★中断からの復帰。iOS は**音を出す他のアプリ**に切り替えると AudioContext を中断するので、
-    #   通話中は定期的に resume を試みる（相手が音を手放したら戻る）。ヘッドレスでは
-    #   中断を再現できないので、**見張りが動いていること**だけ固定する。
-    watching = t.eval("(() => { const a = document.getElementById('appAudio');"
-                      " return !!a })()")
+    # ★中断からの復帰（v0.15.1）：iOS は割り込みで **ctx だけでなく <audio> 要素も pause する**ので、
+    #   復帰時に要素を play し直す（resume だけでは戻らない＝2026-09-29 の実測・tools/audio_wake_test.html）。
+    #   ヘッドレスでは中断そのものを再現できないので、「要素を止めてから復帰イベントを起こすと鳴り直る」を固定する。
+    t.eval("(() => { const a = document.getElementById('appAudio'); a.pause();"
+           " document.dispatchEvent(new Event('visibilitychange')) })()")
+    watching = t.wait_for("!document.getElementById('appAudio').paused", timeout=SHORT)
     errs = t.eval('__T.errors')
     ok = joined and playing and tracks == 1 and not direct and watching and not errs
     r.check('T42', '音は <audio> から出す（スピーカー直結にしない）', ok, 'pass',
-            '参加=%s / 出口が鳴っている=%s / 音声トラック=%s / スピーカー直結=%s / エラー=%s'
-            % (joined, playing, tracks, direct, errs or 'なし'))
+            '参加=%s / 出口が鳴っている=%s / 音声トラック=%s / スピーカー直結=%s / 止めても復帰で鳴り直る=%s / エラー=%s'
+            % (joined, playing, tracks, direct, watching, errs or 'なし'))
 
 
 def T25(r, a, b):
@@ -1637,16 +1648,21 @@ def T27b(r, a, b):
     """
     if not a or not b:
         return
+    # ★許可の前に「部屋が 2 人（a と b）に落ち着く」のを待つ（2026-09-29）。T55b の最後で第三者 c が退出するが、
+    #   a はその直前にリロードしていて発見順が揺れるため、c の行が残ったまま下のセレクタ
+    #   （「最初以外の行の 🎙」）を押すと、**居なくなった c に許可して b には何も届かない**ことがある
+    #   （単独では通り、T55b の後だけ落ちる、という形で発覚した）。
+    settled = a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
     granted = a.eval("(() => { const g = document.querySelector('#members .member:not(:first-child) .m-mic');"
                      " if (g) g.click(); return !!g })()")
     shown = b.wait_for(SPEAK_SHOWN, timeout=SHORT)
     b.eval("document.getElementById('speak').click()", await_promise=False)
     spoke = b.wait_for('__T.gum === 1', timeout=SHORT) and a.wait_for('%s === 1' % AUDIOS, timeout=DISCOVER)
     mute_now = b.eval(MUTE_SHOWN) and not b.eval(SPEAK_SHOWN)   # マイクを持ったらミュートに入れ替わる
-    ok = granted and shown and spoke and mute_now
+    ok = settled and granted and shown and spoke and mute_now
     r.check('T27b', '登壇：許可されると話せる（押すまでマイクは入らない）', ok, 'pass',
-            '許可した=%s / ボタンが出た=%s / 声が届いた=%s / ミュートに入れ替わった=%s'
-            % (granted, shown, spoke, mute_now))
+            '2人に落ち着いた=%s / 許可した=%s / ボタンが出た=%s / 声が届いた=%s / ミュートに入れ替わった=%s'
+            % (settled, granted, shown, spoke, mute_now))
 
     # 登壇権限の引き継ぎ（v0.14.26）：登壇中に「つなぎ直す」でリロードしても、登壇権限が自動復元される
     # リロード前のトークン確認
