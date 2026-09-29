@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.4
+  ぽっと通話〈実験版〉 v0.15.5
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1344,7 +1344,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.4'
+const APP_VERSION = 'v0.15.5'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3470,6 +3470,19 @@ const TTS_KATAKANA = {
   on: 'オン', off: 'オフ', end: 'エンド'
 }
 const TTS_KATAKANA_MAX_WORDS = 3
+// 日本語の読み違いを直す辞書（表記 → かな・v0.15.5）。合成辞書（NAIST-JDIC）に無い／別の読みで載る語を、
+// **読み上げる前にかなへ置き換える**だけ。英字は触らない（下の ttsKatakana の担当）。
+// ★間違った読みを入れないため、**利用者が実際に確認した語だけ**を載せる（英単語辞書と同じく報告が来たら足す）。
+// 単純な文字列置換なので、部分一致の取りこぼしを避けて**長いキーから先に**適用する（下の ttsYomi）。
+const TTS_YOMI = {
+  '成る程': 'なるほど', '成程': 'なるほど',   // 2026-09-29・利用者「成る程が毎回おかしな発音になる」
+}
+const TTS_YOMI_KEYS = Object.keys(TTS_YOMI).sort((a, b) => b.length - a.length)
+const ttsYomi = text => {
+  let t = text
+  for (const k of TTS_YOMI_KEYS) if (t.includes(k)) t = t.split(k).join(TTS_YOMI[k])
+  return t
+}
 // 英字の連なりを単語に分け、最長 3 語から順に辞書を引く。辞書にない語はそのまま返す（大文字の略語はアルファベット読みが妥当）
 const ttsKatakana = text => text.replace(/[A-Za-z][A-Za-z0-9'’\-]*(?:\s+[A-Za-z][A-Za-z0-9'’\-]*)*/g, run => {
   const words = run.split(/\s+/), out = []
@@ -3491,10 +3504,10 @@ const TTS_NAME_CUT = /[\s（(【\[「『〔｜|／/・:：@＠#＃〜~,、]/u
 const ttsName = uid => {
   const raw = ((uid === 'self' ? profile : call.profiles.get(uid) || {}).name || 'ゲスト').replace(TTS_STRIP, '').trim()
   const cut = raw.split(TTS_NAME_CUT)[0].trim()
-  return ttsKatakana([...(cut || raw || 'ゲスト')].slice(0, TTS_NAME_MAX).join(''))   // 名前も辞書に通す（qramo → クラモ）
+  return ttsKatakana(ttsYomi([...(cut || raw || 'ゲスト')].slice(0, TTS_NAME_MAX).join('')))   // 名前も辞書に通す（qramo → クラモ・成る程 → なるほど）
 }
 const ttsText = (uid, text) => {
-  const t = ttsKatakana(text.replace(/https?:\/\/\S+|www\.\S+/gi, 'URL省略').replace(TTS_STRIP, '')).replace(/\s+/g, ' ').trim()
+  const t = ttsKatakana(ttsYomi(text.replace(/https?:\/\/\S+|www\.\S+/gi, 'URL省略').replace(TTS_STRIP, ''))).replace(/\s+/g, ' ').trim()
   if (!t) return ''
   const now = Date.now()
   const again = uid !== call.ttsLastUid || now - call.ttsLastAt > TTS_NAME_AGAIN_MS
