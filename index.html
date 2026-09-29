@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.0
+  ぽっと通話〈実験版〉 v0.15.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1344,7 +1344,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.0'
+const APP_VERSION = 'v0.15.1'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2964,13 +2964,28 @@ const renderBgm = () => {
 //   「ダダダダ」になる（T45）。進行中の約束があるうちは重ねず、4 秒で諦めてもう1本だけ許す。
 //   古い約束が後から解決しても何もしない。BGM の作り直しは 1.5 秒に1回まで。
 let waking = null, wakeAt = 0, bgmRestartAt = 0
+// 止められた <audio> を play し直す（v0.15.1）。iOS は動画などに音声セッションを取られると、
+// **ctx を 'interrupted' にすると同時に <audio> 要素も pause する**。resume は元から効いていたが、
+// 要素が止まったままなので無音が続き、利用者は「つなぎ直す」を押すしかなかった
+// （2026-09-29 実測・tools/audio_wake_test.html：① resume のみ→戻らない ② resume＋play→戻る。
+// ③ srcObject の付け直しは再生位置が飛んで「プチッ」となるので使わない）。
+// 無視した相手の要素は ignorePeer が dropAudios で**捨てて**いる＝paused な要素を鳴らし直しても無視は破れない。
+// play の拒否は play ヘルパが解錠ボタンに落とす（勝手に鳴らせない環境を壊さない）。
+const replayAudios = () => {
+  const out = $('appAudio')
+  if (out && out.srcObject && out.paused) play(out)
+  allAudios().forEach(el => { if (el.paused) play(el) })
+}
 const wakeAudio = () => {
-  if (!audioCtx || audioCtx.state === 'running') return
+  if (!audioCtx) return
+  // ★ctx が生きていても**要素だけ**止まっている形がありうるので、running でも要素は見る（安いガード付き）
+  if (audioCtx.state === 'running') { replayAudios(); return }
   if (waking && Date.now() - wakeAt < 4000) return
   wakeAt = Date.now()
   const p = waking = audioCtx.resume().then(() => {
     if (waking !== p) return                             // 追い越された古い約束
     applyVolume()                                        // 音量の経路を張り直す
+    replayAudios()                                       // ★resume だけでは戻らない（上の実測）
     if (bgmKind !== 'off' && call.joinedId && Date.now() - bgmRestartAt > 1500) {
       bgmRestartAt = Date.now(); startBgm()              // BGM は作り直す（中断明けの状態に頼らない）
     }

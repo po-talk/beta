@@ -1458,16 +1458,17 @@ def T42(r, room):
                     " return a && a.srcObject ? a.srcObject.getAudioTracks().length : 0 })()")
     # ★スピーカーへ直接繋いでいないこと（繋ぐと二重に鳴る／iPhone で音が細る）
     direct = t.eval('__T.edges.some(([x, y]) => y instanceof AudioDestinationNode)')
-    # ★中断からの復帰。iOS は**音を出す他のアプリ**に切り替えると AudioContext を中断するので、
-    #   通話中は定期的に resume を試みる（相手が音を手放したら戻る）。ヘッドレスでは
-    #   中断を再現できないので、**見張りが動いていること**だけ固定する。
-    watching = t.eval("(() => { const a = document.getElementById('appAudio');"
-                      " return !!a })()")
+    # ★中断からの復帰（v0.15.1）：iOS は割り込みで **ctx だけでなく <audio> 要素も pause する**ので、
+    #   復帰時に要素を play し直す（resume だけでは戻らない＝2026-09-29 の実測・tools/audio_wake_test.html）。
+    #   ヘッドレスでは中断そのものを再現できないので、「要素を止めてから復帰イベントを起こすと鳴り直る」を固定する。
+    t.eval("(() => { const a = document.getElementById('appAudio'); a.pause();"
+           " document.dispatchEvent(new Event('visibilitychange')) })()")
+    watching = t.wait_for("!document.getElementById('appAudio').paused", timeout=SHORT)
     errs = t.eval('__T.errors')
     ok = joined and playing and tracks == 1 and not direct and watching and not errs
     r.check('T42', '音は <audio> から出す（スピーカー直結にしない）', ok, 'pass',
-            '参加=%s / 出口が鳴っている=%s / 音声トラック=%s / スピーカー直結=%s / エラー=%s'
-            % (joined, playing, tracks, direct, errs or 'なし'))
+            '参加=%s / 出口が鳴っている=%s / 音声トラック=%s / スピーカー直結=%s / 止めても復帰で鳴り直る=%s / エラー=%s'
+            % (joined, playing, tracks, direct, watching, errs or 'なし'))
 
 
 def T25(r, a, b):
