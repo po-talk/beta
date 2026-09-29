@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.10
+  ぽっと通話〈実験版〉 v0.15.11
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -674,6 +674,11 @@
   /* 名前は詰めてよい（誰かはアバター絵文字でも分かる）。本文は折り返して全部見せる */
   .cl-who{ flex:none; max-width:6.5em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sub) }
   .cl-text{ flex:1; min-width:0; color:var(--text); word-break:break-word }
+  /* 入室通知など中立のシステム行（v0.15.11）：控えめに・中央寄せで会話と区別 */
+  .cl-sys{ justify-content:center }
+  .cl-sys .cl-text{ flex:none; text-align:center; color:var(--sub); font-size:12px }
+  /* 🤫 静かに入る（ロビーのタップ確認の中）。上に少し余白 */
+  .room-quiet{ margin-top:8px; font-size:12.5px }
   .react-fly{ position:fixed; z-index:60; pointer-events:none; font-size:22px; line-height:1;
     animation:react-fly 1.3s ease-out forwards }
   @keyframes react-fly{
@@ -1357,7 +1362,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.10'
+const APP_VERSION = 'v0.15.11'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1425,6 +1430,7 @@ const CALL_INIT = () => ({
   chatAction: null,     // ひとこと（テキスト）
   chatAt: 0,            // 自分が最後に送った時刻（連打の自衛）
   chatSeen: new Map(),  // peerId → 最後に受け入れた時刻（相手の連打への自衛）
+  enterSeen: new Map(), // peerId → 入室通知を最後に受けた時刻（chat とは別のスロットル・v0.15.11）
   profileSeen: new Map(), // peerId → 最後に描き直した時刻（改造クライアントの連打で全員の DOM 再構築が走るのを防ぐ・v0.14.32）
   profileFlush: { t: null }, // 間引いた描き直しをまとめて走らせるタイマー（throttleBy の holder）
   metaSeen: new Map(),  // peerId → 最後に後処理（描画・hash・heartbeat）を走らせた時刻（同上）
@@ -1452,6 +1458,7 @@ const CALL_INIT = () => ({
   requests: new Set(),  // 配信者：マイクを希望している聞き役の peerId（挙手）。許可したら消す
   reqOpenSeen: false,   // 聞き役：配信者がいま受け付けているか（🙋 ボタンの出し入れ）
   myReq: false,         // 聞き役：自分が挙手しているか
+  enterSent: false,     // 聞き役：入室通知をこのセッションで送ったか（1 回だけ・v0.15.11）
   ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📣 と 🎙 を描き分けるため）
   bcEnd: null,          // 聞き役側の「配信の終わり」の状態 { phase:'grace'|'ending', since, endAt }（v0.14.0）
   bcEndTimer: null,     // 上を1秒ごとに見直すタイマー
@@ -3606,6 +3613,17 @@ const speakChat = (uid, text) => {
   if (!ttsEngine && !ttsLoading) loadTts().catch(() => {})
   if (!ttsTimer) pumpTts()
 }
+// 生のテキストをそのまま読む（v0.15.11）。入室通知のように**文面に名前がすでに入っている**ものを、
+// ttsText の名前付けを通さずに読む（uid=null なので ttsMark は何もしない＝どの行も光らせない）。
+const ttsSay = text => {
+  if (!sndTts || !ttsAllowed()) return
+  const t = ttsKatakana(ttsYomi(String(text || ''))).replace(/\s+/g, ' ').trim()
+  if (!t) return
+  ttsQueue.push({ uid: null, text: t, at: performance.now() })
+  while (ttsQueue.length > TTS_QUEUE_MAX) ttsQueue.shift()
+  if (!ttsEngine && !ttsLoading) loadTts().catch(() => {})
+  if (!ttsTimer) pumpTts()
+}
 // 退出で畳む（join/leave の対称。エンジンは捨てない＝再入室で待たせない）。**stopVad（ctx を閉じる）より先に**呼ぶ
 const stopSpeech = () => {
   ttsQueue = []; clearTimeout(ttsTimer); ttsTimer = null
@@ -3627,6 +3645,14 @@ const syncTtsRow = () => {
 }
 // 配信者：いまの募集状態を配る（target 省略＝全員・grantAction はオーナー検証済みの経路）。
 const sendReqOpen = target => { if (call.ownerKey && call.grantAction) sendTo(call.grantAction, { k: 'reqopen', on: !!call.reqOpen }, target) }
+// 次の入室を「静かに」するか（🤫 チェック・ロビーのタップ確認から持ち込む・v0.15.11）。
+let joinQuiet = false
+// 聞き役の入室通知を全員へ 1 回だけ。普通＝名前つき、静かに＝匿名。使ったら普通に戻す（リンク入室などが静かにならないように）。
+const sendEnterNotice = () => {
+  if (!call.chatAction || !call.bcast || call.ownerKey) return
+  sendTo(call.chatAction, { sys: 'enter', q: !!joinQuiet, n: joinQuiet ? '' : profile.name })
+  joinQuiet = false
+}
 {
   const box = $('reqOpen')
   box.onchange = () => {
@@ -4344,6 +4370,15 @@ const logChat = (uid, text) => {
   while (chatLogEl.children.length > CHAT_LOG_MAX) chatLogEl.firstElementChild.remove()
   chatLogEl.hidden = false
 }
+// システムのひとこと（入室通知など・v0.15.11）。投稿者に紐付かない中立の行として時間軸に残す。
+const logSystem = text => {
+  const row = document.createElement('div'); row.className = 'cl-row cl-sys'
+  const tx = document.createElement('span'); tx.className = 'cl-text'; tx.textContent = text   // ★innerHTML にしない
+  row.append(tx)
+  chatLogEl.append(row)
+  while (chatLogEl.children.length > CHAT_LOG_MAX) chatLogEl.firstElementChild.remove()
+  chatLogEl.hidden = false
+}
 
 const showBubble = (uid, text) => {
   if (!text) return
@@ -4517,6 +4552,8 @@ const acceptRoster = async d => {
   // 非同期）。先に着いた分は ownerPeer が未確定なので捨てられる＝**後から入った人に募集が出ない**
   // （2026-08-17 に利用者が発見）。順番に依存しないよう、こちら側から引きにいく形にした。
   if (ownerChanged && own && !call.ownerKey) sendMail({ k: 'ask' }, own)
+  // 入室通知（v0.15.11）：配信者が分かった＝部屋に届く合図。1 セッション 1 回だけ、全員へ送る。
+  if (!call.enterSent && own && !call.ownerKey) { call.enterSent = true; sendEnterNotice() }
   // ★再接続してきたリスナーなら、保持している登壇トークンを枠主に提示して許可の復元を求める（v0.14.26 / v0.14.27）
   // 枠主が変わった時（枠主のつなぎ直し復帰）や、自分がまだ登壇許可（speakers）に載っていない間は
   // 枠主に対してトークンを提示し続ける（枠主交代時は即時、同じ枠主へは3秒に1回まで間引き）。
@@ -4977,6 +5014,19 @@ const wireRoom = () => {
   call.chatAction = call.room.makeAction('chat')
   call.chatAction.onMessage = (data, { peerId }) => {
     if (call.ignored.has(peerId)) return               // 無視した相手のものは出さない
+    // 入室通知（v0.15.11）：システムのひとこと。普通＝「〇〇さんが入室しました」、静かに＝「誰かが静かに入室しました」。
+    // 配信部屋だけ・聞き役の入室だけ（配信者や登壇者は名簿に出るので通知しない）。普通のときだけ読み上げる。
+    if (data && typeof data === 'object' && data.sys === 'enter') {
+      if (!call.bcast) return
+      if (tooSoon(call.enterSeen, peerId, 30000)) return   // 入室通知の連投だけ抑える（chat のスロットルは消費しない）
+      const q = !!data.q
+      const nm = capText(data.n, 20)
+      const line = q ? '誰かが静かに入室しました' : (nm || 'ゲスト') + ' さんが入室しました'
+      logSystem(line)
+      if (!q) ttsSay(line)                              // 静かに入った人は読まない（名乗った人だけ歓迎で読む）
+      if (call.tab !== 'chat') $('tabChat').classList.add('unread')
+      return
+    }
     const text = capText(data, CHAT_MAX)               // ★受け取った文字は必ずここを通す
     if (!text) return
     if (tooSoon(call.chatSeen, peerId, CHAT_ACCEPT_MS)) return
@@ -5972,9 +6022,20 @@ const renderLobby = () => {
         : '「' + label + '」に参加しますか？ ' + roomHow(room)
       const yes = document.createElement('button'); yes.type = 'button'; yes.id = 'roomAskYes'; yes.textContent = call.joinedId ? '移る' : '参加する'
       const no = document.createElement('button'); no.type = 'button'; no.id = 'roomAskNo'; no.textContent = 'やめる'
-      yes.onclick = () => selectRoom(room, lobbyAsk.name)
+      // 🤫 静かに入る（v0.15.11）：配信部屋に聞き役として入るときだけ。既定オフ＝普通に入る（歓迎の入室通知が出る）。
+      //   チェックすると「誰かが静かに入室しました」（匿名・読み上げなし）になり、名乗らずに聞ける。
+      let quietBox = null
+      const listen = isBcRoom(room) && !ownerKeyByFp(roomPk(room))
+      ask.append(txt)
+      if (listen) {
+        const q = document.createElement('label'); q.className = 'snd-opt room-quiet'
+        quietBox = document.createElement('input'); quietBox.type = 'checkbox'; quietBox.id = 'roomAskQuiet'
+        q.append(quietBox, document.createTextNode(' 🤫 静かに入る（名前を出さずに聞きます）'))
+        ask.append(q)
+      }
+      yes.onclick = () => { joinQuiet = !!(quietBox && quietBox.checked); selectRoom(room, lobbyAsk.name) }
       no.onclick = lobbyAskClear
-      ask.append(txt, yes, no); list.append(ask)
+      ask.append(yes, no); list.append(ask)
     }
   })
   // 省略したぶんは黙って消さずに件数だけ知らせる（「全部出ている」と誤解させないため）

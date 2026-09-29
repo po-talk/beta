@@ -1960,6 +1960,38 @@ def T27g(r, room):
     click_leave(o)
 
 
+def T27i(r, room):
+    """入室通知（v0.15.11）：配信部屋に聞き役が入ると、ひとことに「〇〇さんが入室しました」が出る。
+    ロビーのタップ確認に「🤫 静かに入る」チェックが出る（配信部屋の聞き役のときだけ）。
+    """
+    o = r.open_tab()
+    if not make_bcast(r, o, room + 'ENT') or not o.wait_for("location.hash.includes('~pk~')", timeout=DISCOVER):
+        r.check('T27i', '入室通知：聞き役の入室がひとことに出る', False, 'pass', '配信部屋を作れなかった')
+        return
+    h = o.eval('location.hash')
+    # 聞き役 l が入る → o のひとことに「…さんが入室しました」（システム行）
+    l = r.open_tab(hash_=h)
+    l.eval("localStorage.removeItem('pot-call-bcast')")
+    lname = l.eval("(JSON.parse(localStorage.getItem('pot-call-profile')||'{}').name)||''")
+    click_join(l)
+    notice = o.wait_for("[...document.querySelectorAll('#chatLog .cl-sys .cl-text')]"
+                        ".some(e => e.textContent.endsWith('さんが入室しました'))", timeout=DISCOVER + 5)
+    named = o.eval("[...document.querySelectorAll('#chatLog .cl-sys .cl-text')]"
+                   ".some(e => e.textContent === %s + ' さんが入室しました')" % js_str(lname)) if lname else notice
+    # ★🤫 チェックの存在：第三のタブ c がロビーで配信部屋をタップ → #roomAskQuiet が出る（聞き役のときだけ）
+    c = r.open_tab()
+    c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    RB = "[...document.querySelectorAll('#lobbyList .room')].find(b => b.textContent.includes('📣'))"
+    tapped = c.wait_for("!!" + RB, timeout=DISCOVER)
+    if tapped:
+        c.eval(RB + ".click()", await_promise=False)
+    quiet_box = c.wait_for("!!document.getElementById('roomAskQuiet')", timeout=SHORT)
+    ok = notice and named and quiet_box
+    r.check('T27i', '入室通知：聞き役の入室が「〇〇さんが入室しました」で出る・🤫 静かにチェックがある', ok, 'pass',
+            'ひとことに入室通知=%s / 名前つき=%s / 🤫チェックあり=%s' % (notice, named, quiet_box))
+    click_leave(l); click_leave(o)
+
+
 def T28(r, room):
     """配信部屋：**配信者がいない部屋では、誰の音も流れない**（受信側の既定）
 
@@ -2620,6 +2652,8 @@ def main():
             T27g(r, room)
         if run('T27h'):
             T27h(r, room)
+        if run('T27i'):
+            T27i(r, room)
         # 人数上限は9タブ張るので**明示したときだけ**走らせる（既定の回帰には重すぎる）
         if a.only and 'T29' in a.only:
             T29(r, room)
