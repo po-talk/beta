@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ぽっと通話 音の復旧テスト</title>
+<!--
+  ぽっと通話 — 「別アプリの動画で音を失う」問題の再現実験ページ（tools/ 専用・アプリ本体には触らない）
+
+  何を確かめるためのものか（internal/PLAN-v0.15.1-2026-09-29.md の A）
+    v0.15.0 の実機で「X の動画プレビューを踏むと BGM が消え、アプリに戻っても戻らない」が起きた。
+    推定：iOS が**出口の <audio> 要素だけを pause し、AudioContext は 'running' のまま**にするため、
+    いまの wakeAudio（ctx.resume しかしない・ctx が running なら何もしない）が素通りする。
+
+  このページは本体と同じ出口構造だけを再現する：
+    発振器（偽 BGM）→ GainNode → MediaStreamDestination → <audio> 要素（＋無音のキープアライブ）
+  そして復旧ボタンを 3 つ並べ、どれで音が戻るかを押し比べる：
+    ① ctx.resume だけ            ＝いまの wakeAudio 相当。**戻らない予想**
+    ② resume ＋ el.play()        ＝修正案。**戻る予想**
+    ③ ②＋srcObject を付け直す    ＝②でも駄目なときの予備
+
+  手順（iPhone）：
+    1. 「▶️ 再生を始める」を押す（音が鳴り続ける）
+    2. X などへ切り替えて**動画プレビューを踏む**（音声セッションを横取りさせる）
+    3. このページに戻る。音が消えたまま・状態表示がどうなっているかを見る
+    4. ① → ② → ③ の順に押し、**どれで音が戻ったか**をログで確かめる
+  判定：①で戻らず②で戻れば、wakeAudio の修正（play を足す）で直ると確定。
+        ①で戻ってしまったら診断が違うので振り出し。
+-->
+<style>
+  :root{
+    --bg:#f4f6f8; --panel:#fff; --text:#15202b; --sub:#5b6b7a; --line:#dfe5ea;
+    --accent:#1f7a6b; --warn:#a8442a; --chip:#eef2f5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0d1526; --panel:#152033; --text:#e7eef6; --sub:#9fb0c2; --line:#26334a;
+      --accent:#6fd3bf; --warn:#ff9c7a; --chip:#1c2942 }
+  }
+  *{ box-sizing:border-box }
+  body{ margin:0; padding:16px; background:var(--bg); color:var(--text);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    max-width:720px; margin-inline:auto }
+  h1{ font-size:19px; margin:0 0 4px }
+  h2{ font-size:15px; margin:22px 0 8px; color:var(--sub) }
+  .lead{ color:var(--sub); font-size:13px; margin:0 0 14px }
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin:10px 0 }
+  dl{ display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:0; font-size:14px }
+  dt{ color:var(--sub); white-space:nowrap }
+  dd{ margin:0; font-family:ui-monospace,Menlo,monospace; font-weight:700 }
+  .ok{ color:var(--accent) } .ng{ color:var(--warn) }
+  button{ font:inherit; font-size:14px; padding:10px 14px; margin:4px 6px 4px 0; border-radius:10px;
+    border:1px solid var(--line); background:var(--chip); color:var(--text); cursor:pointer }
+  button.go{ background:var(--accent); color:#fff; border-color:transparent; font-weight:700 }
+  #log{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px;
+    font:12px/1.6 ui-monospace,Menlo,monospace; white-space:pre-wrap; word-break:break-all;
+    max-height:40vh; overflow:auto }
+  .step{ font-weight:700; margin-right:4px }
+  ol{ padding-left:20px; font-size:13px; margin:6px 0 } ol li{ margin:3px 0 }
+  code{ background:var(--chip); padding:1px 5px; border-radius:5px; font-size:12px }
+  footer{ color:var(--sub); font-size:12px; margin:22px 0 40px }
+</style>
+</head>
+<body>
+
+<h1>音の復旧テスト〈実験〉</h1>
+<p class="lead">「別アプリの動画で音が消えて戻らない」を再現し、<strong>どの復旧方法が効くか</strong>を確かめるページです。ぽっと通話の本体とは切り離されています。</p>
+
+<div class="panel">
+  <ol>
+    <li><strong>▶️ 再生を始める</strong> を押す（ポーンという音が鳴り続けます）</li>
+    <li>X などに切り替えて<strong>動画プレビューを踏む</strong>（音を横取りさせる）</li>
+    <li>ここに戻る。音が消えたまま・下の状態がどうなっているかを見る</li>
+    <li><strong>① → ② → ③ の順</strong>に押し、どれで音が戻ったかを確かめる</li>
+  </ol>
+</div>
+
+<div class="panel">
+  <button id="start" class="go">▶️ 再生を始める</button>
+  <button id="stop">⏹ 止める</button>
+</div>
+
+<h2>いまの状態（毎秒更新・切り替えの瞬間はログに残ります）</h2>
+<div class="panel"><dl id="env"></dl></div>
+
+<h2>復旧の押し比べ</h2>
+<div class="panel">
+  <div><span class="step">①</span><button id="fix1">ctx.resume だけ（いまの wakeAudio 相当）</button></div>
+  <div><span class="step">②</span><button id="fix2">resume ＋ 要素を play（修正案）</button></div>
+  <div><span class="step">③</span><button id="fix3">②＋srcObject を付け直す（予備）</button></div>
+  <p style="font-size:13px;color:var(--sub);margin:6px 0 0">押したあと<strong>音が戻ったかは耳で判定</strong>してください。各ボタンは押した時点の状態と結果をログに書きます。</p>
+</div>
+
+<h2>ログ</h2>
+<div style="margin-bottom:6px"><button id="clear">ログを消す</button></div>
+<div id="log"></div>
+
+<footer>ぽっと通話の実験ページ（<code>tools/</code> 以下・アプリからのリンクはありません）。マイクは使いません。</footer>
+
+<script>
+const $ = id => document.getElementById(id)
+const LOG_KEY = 'pot-wake-test-log'
+const loadLog = () => { try { return JSON.parse(localStorage.getItem(LOG_KEY) || '[]') } catch { return [] } }
+const saveLog = a => { try { localStorage.setItem(LOG_KEY, JSON.stringify(a.slice(-300))) } catch {} }
+const ts = () => { const t = new Date(); return `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}` }
+const log = (...p) => { const a = loadLog(); a.push(ts() + ' ' + p.join(' ')); saveLog(a); drawLog() }
+const drawLog = () => { const el = $('log'); el.textContent = loadLog().join('\n') || '（まだありません）'; el.scrollTop = el.scrollHeight }
+$('clear').onclick = () => { saveLog([]); drawLog() }
+
+// ───── 本体と同じ出口構造（index.html の ensureOut / ensureAudioCtx / bgm を最小化したもの）─────
+let ctx = null, dest = null, el = null, keep = null, tone = null
+
+const state = () => ({
+  ctx: ctx ? ctx.state : 'なし',
+  paused: el ? String(el.paused) : 'なし',
+  time: el ? el.currentTime.toFixed(1) : '-',
+  muted: el ? String(el.muted) : '-',
+})
+let prev = ''
+const draw = (fromTick) => {
+  const s = state()
+  const rows = [
+    ['AudioContext', `<span class="${s.ctx === 'running' ? 'ok' : 'ng'}">${s.ctx}</span>`],
+    ['要素の paused', `<span class="${s.paused === 'false' ? 'ok' : 'ng'}">${s.paused}</span>`],
+    ['要素の currentTime', s.time + '（進んでいれば再生中）'],
+    ['要素の muted', s.muted],
+    ['画面', document.hidden ? '裏' : '表'],
+  ]
+  $('env').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')
+  // 状態が変わった瞬間だけログに残す（毎秒書くとログが埋まる）
+  const sig = `${s.ctx}/${s.paused}`
+  if (fromTick && sig !== prev && prev) log(`【変化】ctx=${s.ctx} paused=${s.paused}`)
+  prev = sig
+}
+setInterval(() => draw(true), 1000)
+
+const snap = label => { const s = state(); log(`${label}  ctx=${s.ctx} paused=${s.paused} t=${s.time}`) }
+
+// 偽 BGM：2 音のポーン（存在がはっきり分かる程度・小さめ）
+const startTone = () => {
+  const g = ctx.createGain(); g.gain.value = 0.12; g.connect(dest)
+  const osc = ctx.createOscillator(); osc.type = 'sine'
+  osc.frequency.setValueAtTime(523, ctx.currentTime)
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 0.5           // ゆっくり 2 音を行き来
+  const lg = ctx.createGain(); lg.gain.value = 130
+  lfo.connect(lg); lg.connect(osc.frequency)
+  osc.connect(g); osc.start(); lfo.start()
+  tone = { osc, lfo, g }
+}
+
+$('start').onclick = async () => {
+  try {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)()
+      dest = ctx.createMediaStreamDestination()
+      // 本体と同じ：無音のキープアライブを常時接続（v0.14.49 の outKeepAlive 相当）
+      keep = ctx.createConstantSource(); keep.offset.value = 0; keep.connect(dest); keep.start()
+      el = document.createElement('audio')
+      el.setAttribute('playsinline', ''); el.srcObject = dest.stream
+      document.body.append(el)
+      el.addEventListener('pause', () => log('【イベント】要素が pause された'))
+      el.addEventListener('play', () => log('【イベント】要素が play された'))
+      ctx.addEventListener('statechange', () => log('【イベント】ctx →', ctx.state))
+    }
+    await ctx.resume()
+    if (!tone) startTone()
+    await el.play()
+    log('▶️ 再生を開始しました')
+  } catch (e) { log('❌ 開始に失敗:', e && (e.name + ' ' + e.message)) }
+  draw()
+}
+$('stop').onclick = () => { if (tone) { try { tone.osc.stop(); tone.lfo.stop() } catch {} tone = null } if (el) el.pause(); log('⏹ 止めました'); draw() }
+
+// ───── 復旧の押し比べ ─────
+$('fix1').onclick = async () => {
+  snap('① 押下前')
+  try { await ctx.resume(); log('① ctx.resume 実行 →', ctx.state) } catch (e) { log('① resume 失敗:', e && e.message) }
+  snap('① 押下後'); draw()
+  log('→ 音は戻りましたか？（耳で判定）')
+}
+$('fix2').onclick = async () => {
+  snap('② 押下前')
+  try { await ctx.resume() } catch {}
+  try { await el.play(); log('② resume＋play 実行') } catch (e) { log('② play 拒否:', e && (e.name + ' ' + e.message)) }
+  snap('② 押下後'); draw()
+  log('→ 音は戻りましたか？（耳で判定）')
+}
+$('fix3').onclick = async () => {
+  snap('③ 押下前')
+  try { await ctx.resume() } catch {}
+  try { el.srcObject = null; el.srcObject = dest.stream; await el.play(); log('③ srcObject 付け直し＋play 実行') }
+  catch (e) { log('③ 失敗:', e && (e.name + ' ' + e.message)) }
+  snap('③ 押下後'); draw()
+  log('→ 音は戻りましたか？（耳で判定）')
+}
+
+document.addEventListener('visibilitychange', () => {
+  log(document.hidden ? '── 画面が裏に回りました' : '── 画面に戻りました')
+  snap(document.hidden ? '裏に回った時点' : '戻った時点')
+  draw()
+})
+
+drawLog(); draw()
+log('--- 開くたびにここに続きが出ます（ログは端末に残ります）---')
+</script>
+</body>
+</html>
