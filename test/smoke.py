@@ -2060,6 +2060,57 @@ def T60(r, room):
     click_leave(a); click_leave(b); click_leave(c)
 
 
+def T61(r, room):
+    """ひとことの行から無視（v0.15.17）：行をタップ → 名前の隣にハート → 押すと無視（初回は説明ダイアログ）。
+    無視した人の過去の行は「〇〇 を無視しました（取り消す）」に畳まれ、以後のひとことは届かない。取り消すと戻り、また届く。
+    自分の行にはハートが出ない。一覧に出ない聞き役でも「コメントした瞬間に無視できる」の土台。
+    """
+    name = room + 'IGN'
+    a, b = r.open_tab(), r.open_tab()
+    a.eval("localStorage.removeItem('pot-call-ignore-seen')")   # 初回の説明ダイアログを通る
+    r.join(a, name); r.join(b, name)
+    if not (a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)):
+        r.check('T61', 'ひとことから無視', False, 'pass', '2人そろわなかった'); return
+    # ★同じタブから続けて送るときは送信側の連投抑止（CHAT_EVERY_MS）を越えてから。待たないと 2 通目が
+    #   **送信側で丸ごと落ちて**「無視中は届かない」が空振りする（発覚 2026-09-30）。
+    say = lambda t, m: (time.sleep(1.7), t.eval("(() => { const i = document.getElementById('chatText'); i.value = %s; document.getElementById('chatSend').click() })()" % js_str(m)))[1]
+    seen = lambda t, m, to=SHORT + 5: t.wait_for("[...document.querySelectorAll('#chatLog .cl-row:not(.cl-hid) .cl-text')].some(e => e.textContent === %s)" % js_str(m), timeout=to)
+    show_tab(a, 'chat'); show_tab(b, 'chat')
+    # b がコメント → a に届く。行は .can（タップ可）で、ハートはまだ出ていない
+    say(b, 'いやなこと')
+    got = seen(a, 'いやなこと')
+    ROW = "[...document.querySelectorAll('#chatLog .cl-row.can')].find(r => r.querySelector('.cl-text').textContent === 'いやなこと')"
+    heart_hidden = a.eval("(() => { const r = %s; return !!r && getComputedStyle(r.querySelector('.cl-ig')).display === 'none' })()" % ROW)
+    # 行をタップ → ハートが現れる
+    a.eval(ROW + ".click()")
+    heart_shown = a.wait_for("(() => { const r = %s; return !!r && r.classList.contains('pick') && getComputedStyle(r.querySelector('.cl-ig')).display !== 'none' })()" % ROW, timeout=SHORT)
+    # ハートを押す → 初回説明 → 「無視する」
+    a.eval(ROW + ".querySelector('.cl-ig').click()")
+    dlg = a.wait_for("document.getElementById('ignoreDlg').open", timeout=SHORT)
+    a.eval("document.getElementById('ignoreYes').click()")
+    folded = a.wait_for("!!document.querySelector('#chatLog .cl-ign') && document.querySelector('#chatLog .cl-ign .cl-text').textContent.endsWith(' を無視しました')", timeout=SHORT)
+    row_hidden = a.eval("(() => { const r = [...document.querySelectorAll('#chatLog .cl-row[data-uid]:not(.cl-ign)')].find(r => r.querySelector('.cl-text').textContent === 'いやなこと'); return !!r && r.classList.contains('cl-hid') })()")
+    # 無視中は b のひとことが a に届かない（b 自身の画面には出る）
+    say(b, 'まだ言う')
+    b_self = seen(b, 'まだ言う')
+    time.sleep(3)
+    blocked = not a.eval("[...document.querySelectorAll('#chatLog .cl-text')].some(e => e.textContent === 'まだ言う')")
+    # 取り消す → 畳みが消えて元の行が戻る → また届く
+    a.eval("document.querySelector('#chatLog .cl-ign .cl-undo').click()")
+    restored = a.wait_for("!document.querySelector('#chatLog .cl-ign') && [...document.querySelectorAll('#chatLog .cl-row:not(.cl-hid) .cl-text')].some(e => e.textContent === 'いやなこと')", timeout=SHORT)
+    say(b, 'もどった')
+    again = seen(a, 'もどった')
+    # 自分の行にはハートが無い（.can でない）
+    say(a, 'じぶん')
+    seen(a, 'じぶん')
+    self_plain = a.eval("(() => { const r = [...document.querySelectorAll('#chatLog .cl-row')].find(r => r.querySelector('.cl-text').textContent === 'じぶん'); return !!r && !r.classList.contains('can') && !r.querySelector('.cl-ig') })()")
+    ok = got and heart_hidden and heart_shown and dlg and folded and row_hidden and b_self and blocked and restored and again and self_plain
+    r.check('T61', 'ひとことから無視：タップでハート→無視→畳む→届かない→取り消すで戻る・自分の行にはハート無し', ok, 'pass',
+            '届く=%s / 最初はハート非表示=%s / タップで出る=%s / 説明ダイアログ=%s / 畳んだ=%s / 元の行を隠した=%s / 相手側には出る=%s / 無視中は届かない=%s / 取り消すで戻る=%s / また届く=%s / 自分の行は素=%s'
+            % (got, heart_hidden, heart_shown, dlg, folded, row_hidden, b_self, blocked, restored, again, self_plain))
+    click_leave(a); click_leave(b)
+
+
 def T28(r, room):
     """配信部屋：**配信者がいない部屋では、誰の音も流れない**（受信側の既定）
 
@@ -2726,6 +2777,8 @@ def main():
             T27j(r, room)
         if run('T60'):
             T60(r, room)
+        if run('T61'):
+            T61(r, room)
         # 人数上限は9タブ張るので**明示したときだけ**走らせる（既定の回帰には重すぎる）
         if a.only and 'T29' in a.only:
             T29(r, room)
