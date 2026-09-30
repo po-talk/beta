@@ -1779,9 +1779,13 @@ def T31(r, room):
     for t in (b, c):
         t.eval("localStorage.removeItem('pot-call-bcast')")   # ★同じブラウザなので鍵を消して聞き役にする
         click_join(t)
-    if not a.wait_for('%s === 3' % MEMBERS, timeout=DISCOVER):
+    # ★③（v0.15.10）：配信者 a は普通の聞き役を見ない（自分だけ＝1）。3 人そろった合図は聞き役側（自分＋配信者＝2）と、
+    #   配信者側の「🙂 ほか 2 人が聞いています」で見る。
+    three = (b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and c.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+             and a.wait_for("(document.querySelector('#members .m-more') || {}).textContent === '🙂 ほか 2 人が聞いています'", timeout=DISCOVER))
+    if not three:
         r.check('T31', 'おたよりが枠主に届き、選ばれると部屋に出る', False, 'pass',
-                '3人そろわなかった（%s人）' % a.eval(MEMBERS))
+                '3人そろわなかった（配信者の一覧=%s / 聞き役b=%s / 聞き役c=%s）' % (a.eval(MEMBERS), b.eval(MEMBERS), c.eval(MEMBERS)))
         return
     # 枠主：お題を出して募集開始
     show_tab(a, 'mail')
@@ -1874,8 +1878,11 @@ def T32(r, room):
     heard = b.wait_for('%s === 1' % AUDIOS, timeout=DISCOVER)
     # 名簿が届いていれば配信者の行に 📣 が出る（＝誰が配信者かまで分かっている）
     mark = b.eval("[...document.querySelectorAll('#members .m-bc')].some(e => e.textContent === '📣')")
+    # ★後から入った人は、名簿が届いて ownerPresent になるまでの約 1 秒だけ「接続が切れました」（grace）が出る仕様。
+    #   音が届いた直後に 1 回だけ読むとその一瞬を拾って落ちることがある（2026-09-30）。落ち着くのを待って読む。
+    settled = b.wait_for("%s.includes('配信者の声だけが流れます')" % BC_NOTE, timeout=SHORT)
     note = b.eval(BC_NOTE)
-    ok = met and heard and mark and '配信者の声だけが流れます' in note
+    ok = met and heard and mark and settled
     r.check('T32', '配信部屋に後から入っても配信者の声が届く', ok, 'pass',
             '2人=%s / 声が届いた=%s / 配信者が分かる=%s / 説明=%r' % (met, heard, mark, note[:24]))
     for t in (a, b):
