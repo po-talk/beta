@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.15
+  ぽっと通話〈実験版〉 v0.15.16
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1373,7 +1373,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.15'
+const APP_VERSION = 'v0.15.16'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2059,7 +2059,7 @@ const NUDGE_ACCEPT_MS = Math.max(1000, NUDGE_EVERY_MS - 2000)
 const micOff = () => call.muted || (call.bcast && !call.stream)
 // since ＝ この部屋に入ってから何秒か。**満室のときに誰が抜けるかを決めるのに使う**（下の checkCapacity）。
 // 絶対時刻ではなく経過秒で配るのは、端末ごとの時計ズレの影響を受けないため（部屋の継続時間と同じ考え方）。
-const myProfilePayload = () => ({ name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), relay: call.usingRelay, since: mySeconds() })
+const myProfilePayload = () => ({ name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), relay: call.usingRelay, since: mySeconds(), bgm: bgmKind })
 
 // Trystero 設定（通話部屋とロビー部屋で共用）。
 const TRYSTERO_BASE = {
@@ -2981,9 +2981,33 @@ const renderBgm = () => {
   $('bgmVolVal').textContent = Math.round(bgmVol * 100) + '%'
   ;[...$('bgmRow').querySelectorAll('.snd-opt')].forEach(l => l.classList.toggle('sel', l.querySelector('input').checked))
 }
+// 新入りが「場の BGM」を初期値にもらう（v0.15.16・利用者）。配信部屋＝配信者、雑談部屋＝在室が一番長い人が源。
+// **自分の BGM が「なし」で、まだ自分で選んでいないときだけ**採用する（既に選んでいる人の音楽は奪わない）。
+// 部屋の初期値であって自分の既定ではないので、localStorage には保存しない。
+let bgmTouched = false
+const bgmSourcePeer = () => {
+  if (call.bcast) return (call.ownerPeer && call.ownerPeer !== myPeerId) ? call.ownerPeer : null
+  // 雑談：自分より先に入っていた人のうち、一番古い人（joinedAt が最小）。いなければ自分が最古＝源なし。
+  const mineAt = call.joinedAt ? Date.now() - mySeconds() * 1000 : Infinity
+  let best = null, bestAt = mineAt
+  call.peers.forEach(id => { const j = (call.profiles.get(id) || {}).joinedAt
+    if (typeof j === 'number' && j < bestAt) { bestAt = j; best = id } })
+  return best
+}
+const maybeAdoptBgm = () => {
+  if (!call.joinedId || bgmTouched) return   // この部屋で自分が BGM を触った＝以後は尊重（bgmTouched は join でリセット）
+  // ★配信部屋＝部屋ごとにリセット（配信者の演出に毎回馴染む）：自分の好みが載っていても源の BGM に切り替える。
+  //   雑談部屋＝主のいない対等な場なので、**自分の BGM が「なし」のときだけ**もらう（選んでいる人の音楽は奪わない）。
+  if (!call.bcast && bgmKind !== 'off') return
+  const src = bgmSourcePeer(); if (!src) return
+  const k = (call.profiles.get(src) || {}).bgm
+  if (!['off', 'tune', 'amb', 'fire'].includes(k) || k === bgmKind) return   // 源が不明／同じなら何もしない
+  bgmKind = k                                                     // ★保存しない（部屋の初期値であって自分の既定ではない）
+  renderBgm(); startBgm()
+}
 {
   const pick = k => () => {
-    bgmKind = k; lsSet(BGM_KEY, k)
+    bgmKind = k; lsSet(BGM_KEY, k); bgmTouched = true   // 自分で選んだ＝以後この部屋では「場の BGM」を受け取らない
     renderBgm(); startBgm()      // 選び直したらその場で作り直す（前のものは startBgm が畳む）
   }
   $('bgmOff').onchange = pick('off')
@@ -4566,6 +4590,7 @@ const acceptRoster = async d => {
   if (ownerChanged && own && !call.ownerKey) sendMail({ k: 'ask' }, own)
   // 入室通知（v0.15.11）：配信者が分かった＝部屋に届く合図。1 セッション 1 回だけ、全員へ送る。
   if (!call.enterSent && own && !call.ownerKey) { call.enterSent = true; sendEnterNotice() }
+  maybeAdoptBgm()   // 配信部屋：配信者（源）が確定した＝場の BGM をもらえる（v0.15.16）
   // ★再接続してきたリスナーなら、保持している登壇トークンを枠主に提示して許可の復元を求める（v0.14.26 / v0.14.27）
   // 枠主が変わった時（枠主のつなぎ直し復帰）や、自分がまだ登壇許可（speakers）に載っていない間は
   // 枠主に対してトークンを提示し続ける（枠主交代時は即時、同じ枠主へは3秒に1回まで間引き）。
@@ -4938,8 +4963,11 @@ const wireRoom = () => {
       // 上限30日は自己申告の暴走ガード（「自分は大昔から居る」と言い張って居座らせない）。
       joinedAt: Number.isFinite(data?.since) && data.since >= 0 && data.since < 30 * 24 * 3600
         ? Date.now() - data.since * 1000
-        : prev.joinedAt
+        : prev.joinedAt,
+      // 相手の BGM 設定（v0.15.16）。新入りが「場の BGM」を初期値にもらうために使う（下の maybeAdoptBgm）
+      bgm: ['off', 'tune', 'amb', 'fire'].includes(data?.bgm) ? data.bgm : prev.bgm
     })
+    maybeAdoptBgm()   // 新入りが「場の BGM」を初期値にもらう（源＝配信者／最古の人・v0.15.16）
     // 後処理（全行の DOM 再構築＋満室判定）は発信者ごとに間引く。中身は上で必ず取り込んでいる
     throttleBy(call.profileSeen, peerId, PROFILE_ACCEPT_MS, call.profileFlush, () => {
       renderMembers()
@@ -5265,6 +5293,7 @@ const armJoined = (roomId, name, bcast) => {
   if (typeof entryCancel === 'function') entryCancel()
   diagSince = Date.now()
   call.wantWake = true; wake()
+  bgmTouched = false   // 部屋ごとに「まだ BGM を触っていない」から始める（場の BGM をもらえるように・v0.15.16）
   call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
   call.meta = { name, tag: '', tagBy: '', tagAt: 0 }   // 名前は自分が持って来たもの。相手のほうが先なら meta で上書きされる
   render(); renderMembers(); renderBcNote()
