@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.17
+  ぽっと通話〈実験版〉 v0.15.18
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1386,7 +1386,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.17'
+const APP_VERSION = 'v0.15.18'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1441,6 +1441,7 @@ const CALL_INIT = () => ({
   ttsAckAt: 0,          // 受け取る側：最後に {ok} を返した時刻（音が来なければ 15 秒おきに返し直す）
   ttsSeen: new Map(),   // 案内の連打よけ
   ttsLastUid: null,     // 配信者：最後に読み上げた投稿者（同じ人が続くときは名前を省く）
+  ttsNow: null,         // 受け取る側：配信者がいま読んでいるひとことの投稿者（peerId）。無視した人の番はつくよみを消す（v0.15.18）
   ttsTrackIds: new Set(), // 受け取る側：'tts' として載せた track の id。送り直しは同じ track の包み直しなので、案内より先に届いても配信者の行に載せない
   ttsLastAt: 0,         // 配信者：その時刻（間が空いたら名前をまた読む）
   profiles: new Map(),  // peerId → {name, emoji, muted, relay}（相手から届いたプロフィール）
@@ -4065,9 +4066,26 @@ const attachStream = (id, ms, sid) => {
   routePeer(uid)                   // 音量が 100% でなければマスター音量の経路に繋ぎ替える
   play(a)
   if (uid === 'tts') {             // 仮想行は「音が流れている」ときだけ出すので、流れ始め・止まりで描き直す
+    if (call.ttsNow && call.ignored.has(call.ttsNow)) ms.getAudioTracks().forEach(t => { t.enabled = false })   // 読んでいる最中に載った
     ms.getAudioTracks().forEach(t => { t.onunmute = t.onmute = t.onended = () => renderMembers() })
     renderMembers()
   }
+}
+// ★無視した人のひとことを、つくよみが読む間だけ消す（v0.15.18・利用者「読み上げが抜け道」）。
+//   読み上げは**配信者の端末で合成**されて 1 本のトラックで届くので、聞き役側の無視（コメントを弾く）をすり抜けていた。
+//   配信者は読み始めに {now: 投稿者}・読み終わりに {now: null} を流している（行を光らせる用）ので、それを見て
+//   **自分の端末だけで**つくよみのトラックを enabled=false にする。配信者にも相手にも何も伝わらない（無視の原則のまま）。
+//   ・muted/volume ではなく track.enabled：経路が <audio> 直と Web Audio の 2 通りあり、iOS は要素の音量を無視するため。
+//     enabled は track.muted を変えないので「音が届いているか」の見張り（ttsFlowing）も誤作動しない。
+//   ・戻すのは少し遅らせる：音声は jitter buffer の分だけデータより遅れて着くので、すぐ戻すと読み終わりの尻尾が漏れる。
+let ttsGateTimer = null
+const TTS_GATE_TAIL_MS = 600
+const ttsGate = () => {
+  const off = !!call.ttsNow && call.ignored.has(call.ttsNow)
+  const set = on => (call.audios.get('tts') || []).forEach(a => a.srcObject && a.srcObject.getAudioTracks().forEach(t => { t.enabled = on }))
+  clearTimeout(ttsGateTimer); ttsGateTimer = null
+  if (off) set(false)
+  else ttsGateTimer = setTimeout(() => { ttsGateTimer = null; set(true) }, TTS_GATE_TAIL_MS)
 }
 // 「送り直して」に応じる：**一度外してから、新しい MediaStream に包んで入れ直す。**
 // ・同じトラックをもう一度 addTrack するとブラウザは「送信者が既にある」と例外を投げる＝addStream だけでは
@@ -4194,10 +4212,12 @@ const doIgnore = id => {
   call.nudges.delete(id)
   renderMembers(); renderAudioWarn([])
   renderChatIgnore(id, true)    // ひとことの過去の行を畳む（v0.15.17）
+  ttsGate()                     // いまその人のひとことを読んでいる最中なら、つくよみもその場で消す（v0.15.18）
 }
 const unignorePeer = id => {
   call.ignored.delete(id)
   renderChatIgnore(id, false)   // 畳んだ行を戻す（v0.15.17）
+  ttsGate()
   // 音は捨ててあるので、相手に送り直してもらう。「音が届いていない」ときと同じ頼み方。
   // 配信部屋で名簿に載っていない相手には頼まない（送ってもらっても鳴らさないので無駄になる）。
   if (canHear(id)) sendTo(call.nudgeAction, 1, id)
@@ -5106,7 +5126,11 @@ const wireRoom = () => {
       return
     }
     if ('now' in d) {  // 読んでいる人の行を光らせる（配信者からだけ）。連打よけはここだけ
-      if (peerId !== call.ownerPeer || tooSoon(call.ttsSeen, peerId, 100)) return
+      if (peerId !== call.ownerPeer) return
+      // ★無視の門は**状態**なので、連打よけより前で必ず取り込む（{now:null} の直後の {now:X} を捨てると漏れる）
+      call.ttsNow = typeof d.now === 'string' && d.now !== myPeerId ? d.now.slice(0, 64) : null
+      ttsGate()
+      if (tooSoon(call.ttsSeen, peerId, 100)) return
       if (ttsReadingUid) ttsMark(ttsReadingUid, false)
       const uid = typeof d.now === 'string' ? (d.now === myPeerId ? 'self' : d.now.slice(0, 64)) : null
       if (uid && (uid === 'self' || call.peers.has(uid))) ttsMark(uid, true)

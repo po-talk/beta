@@ -2111,6 +2111,57 @@ def T61(r, room):
     click_leave(a); click_leave(b)
 
 
+def T62(r, room):
+    """無視した人のひとことは、つくよみの読み上げでも聞こえない（v0.15.18）。
+    読み上げは配信者の端末で合成された 1 本のトラックなので、聞き役は配信者の {now: 投稿者} を見て、
+    無視した人の番の間だけ自分の端末でトラックを enabled=false にする（配信者にも相手にも伝わらない）。
+    配信者 o・聞き役 l（無視する側）・聞き役 x（無視される側）。
+    """
+    o = r.open_tab()
+    if not make_bcast(r, o, room + 'TIG') or not o.wait_for("location.hash.includes('~pk~')", timeout=DISCOVER):
+        r.check('T62', '無視した人の読み上げ', False, 'pass', '配信部屋を作れなかった'); return
+    h = o.eval('location.hash')
+    l, x = r.open_tab(hash_=h), r.open_tab(hash_=h)
+    for t in (l, x):
+        t.eval("localStorage.removeItem('pot-call-bcast'); localStorage.setItem('pot-call-ignore-seen','1')")
+        click_join(t)
+    met = l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and x.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    show_tab(o, 'settings'); o.eval("document.getElementById('sndTts').click()")
+    tts_l = l.wait_for("%s >= 2" % AUDIOS, timeout=SHORT + 15)   # 配信者の声＋つくよみ
+    # l の端末で「つくよみの（どれかの）トラックが切られた瞬間があったか」を 50ms ごとに記録する
+    l.eval("window.__gateOff = 0; setInterval(() => { if ([...document.querySelectorAll('audio:not(#appAudio)')].some(a => a.srcObject && a.srcObject.getAudioTracks().some(t => !t.enabled))) window.__gateOff++ }, 50)")
+    say = lambda t, m: (time.sleep(1.7), t.eval("(() => { const i = document.getElementById('chatText'); i.value = %s; document.getElementById('chatSend').click() })()" % js_str(m)))[1]
+    for t in (o, l, x): show_tab(t, 'chat')
+    # x がまず 1 通 → l はその行から無視
+    say(x, 'はじめまして')
+    ROW = "[...document.querySelectorAll('#chatLog .cl-row.can')].find(r => r.querySelector('.cl-text').textContent === 'はじめまして')"
+    row = l.wait_for("!!" + ROW, timeout=SHORT + 5)
+    time.sleep(3)   # 1 通目の読み上げ（無視前なので聞こえてよい）を済ませる
+    l.eval(ROW + ".click()"); l.eval(ROW + ".querySelector('.cl-ig').click()")
+    ignored = l.wait_for("!!document.querySelector('#chatLog .cl-ign')", timeout=SHORT)
+    time.sleep(1); l.eval("window.__gateOff = 0")
+    # 無視後の x のひとこと → 配信者が読む → l ではその間つくよみが切れる
+    n = o.eval("window.__T.ttsTexts.length")
+    say(x, 'きこえないはず')
+    read_x = o.wait_for("window.__T.ttsTexts.length > %d" % n, timeout=SHORT + 10)
+    gated = l.wait_for("window.__gateOff > 0", timeout=SHORT)
+    reopened = l.wait_for("![...document.querySelectorAll('audio:not(#appAudio)')].some(a => a.srcObject && a.srcObject.getAudioTracks().some(t => !t.enabled))", timeout=SHORT)
+    # 無視していない人（配信者自身）のひとことでは切れない
+    time.sleep(2); l.eval("window.__gateOff = 0")
+    n = o.eval("window.__T.ttsTexts.length")
+    say(o, 'みなさんこんばんは')
+    read_o = o.wait_for("window.__T.ttsTexts.length > %d" % n, timeout=SHORT + 10)
+    time.sleep(2)
+    open_o = l.eval("window.__gateOff") == 0
+    # x 本人の端末では何も切れていない（無視は l の端末だけ）
+    x_open = not x.eval("[...document.querySelectorAll('audio:not(#appAudio)')].some(a => a.srcObject && a.srcObject.getAudioTracks().some(t => !t.enabled))")
+    ok = met and tts_l and row and ignored and read_x and gated and reopened and read_o and open_o and x_open
+    r.check('T62', '無視した人のひとことは、つくよみの読み上げでも聞こえない（その番だけ自分の端末で消す）', ok, 'pass',
+            '3人=%s / つくよみ到着=%s / 行=%s / 無視=%s / 配信者が読んだ=%s / その間切れた=%s / 読み終わりで戻る=%s / 他の人は切れない=%s(%s) / 相手の端末は無関係=%s'
+            % (met, tts_l, row, ignored, read_x, gated, reopened, open_o, read_o, x_open))
+    for t in (l, x, o): click_leave(t)
+
+
 def T28(r, room):
     """配信部屋：**配信者がいない部屋では、誰の音も流れない**（受信側の既定）
 
@@ -2779,6 +2830,8 @@ def main():
             T60(r, room)
         if run('T61'):
             T61(r, room)
+        if run('T62'):
+            T62(r, room)
         # 人数上限は9タブ張るので**明示したときだけ**走らせる（既定の回帰には重すぎる）
         if a.only and 'T29' in a.only:
             T29(r, room)
