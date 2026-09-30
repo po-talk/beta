@@ -1960,6 +1960,37 @@ def T27g(r, room):
     click_leave(o)
 
 
+def T27j(r, room):
+    """BGM の引き継ぎ・配信部屋（v0.15.16）：配信者の BGM がリスナーの初期値になる（自分の好みも配信者に合わせる）。
+    自分で BGM を変えたら、それが優先（以後は配信者に合わせない）。
+    """
+    o = r.open_tab()
+    if not make_bcast(r, o, room + 'BGM') or not o.wait_for("location.hash.includes('~pk~')", timeout=DISCOVER):
+        r.check('T27j', 'BGM 引き継ぎ（配信部屋）', False, 'pass', '配信部屋を作れなかった')
+        return
+    # 配信者は焚き火にする
+    show_tab(o, 'settings')
+    o.eval("(() => { const b = document.getElementById('bgmFire'); b.checked = true; b.onchange() })()")
+    o_fire = o.eval("document.getElementById('bgmFire').checked")
+    h = o.eval('location.hash')
+    # リスナー l は最初から「軽快な音楽」を選んでおく → 配信部屋では配信者（焚き火）に切り替わる
+    l = r.open_tab(hash_=h)
+    l.eval("localStorage.setItem('pot-call-bgm','tune'); localStorage.removeItem('pot-call-bcast')")
+    click_join(l)
+    l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    adopted = l.wait_for("document.getElementById('bgmFire').checked", timeout=DISCOVER + 5)   # 配信者の焚き火をもらう
+    # l が自分で「なし」に変えたら、以後は配信者に合わせない（配信者が別のに変えても追わない）
+    show_tab(l, 'settings')
+    l.eval("(() => { const b = document.getElementById('bgmOff'); b.checked = true; b.onchange() })()")
+    o.eval("(() => { const b = document.getElementById('bgmTune'); b.checked = true; b.onchange() })()")   # 配信者が軽快な音楽へ
+    time.sleep(2.5)
+    kept_off = l.eval("document.getElementById('bgmOff').checked")   # 自分の選択（なし）が優先されたまま
+    ok = o_fire and adopted and kept_off
+    r.check('T27j', 'BGM 引き継ぎ（配信部屋）：配信者の BGM が初期値・自分で変えたら優先', ok, 'pass',
+            '配信者=焚き火=%s / リスナーが焚き火をもらう=%s / 自分で変えたら追わない=%s' % (o_fire, adopted, kept_off))
+    click_leave(l); click_leave(o)
+
+
 def T27i(r, room):
     """入室通知（v0.15.11）：配信部屋に聞き役が入ると、ひとことに「〇〇さんが入室しました」が出る。
     ロビーのタップ確認に「🤫 静かに入る」チェックが出る（配信部屋の聞き役のときだけ）。
@@ -1990,6 +2021,36 @@ def T27i(r, room):
     r.check('T27i', '入室通知：聞き役の入室が「〇〇さんが入室しました」で出る・🤫 静かにチェックがある', ok, 'pass',
             'ひとことに入室通知=%s / 名前つき=%s / 🤫チェックあり=%s' % (notice, named, quiet_box))
     click_leave(l); click_leave(o)
+
+
+def T60(r, room):
+    """BGM の引き継ぎ・雑談部屋（v0.15.16）：**なしの人だけ**、一番長くいる人の BGM をもらう。
+    BGM を選んでいる人はそのまま（音楽を奪わない）。
+    """
+    name = room + 'CBGM'
+    a = r.open_tab()      # 先客（最古）
+    a.eval("localStorage.setItem('pot-call-bgm','tune')")
+    r.join(a, name)
+    if not a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER):
+        r.check('T60', 'BGM 引き継ぎ（雑談部屋）', False, 'pass', '先客が入れなかった')
+        return
+    a_tune = a.eval("document.getElementById('bgmTune').checked")
+    # 新入り b は BGM「なし」→ 先客の「軽快な音楽」をもらう
+    b = r.open_tab()
+    b.eval("localStorage.removeItem('pot-call-bgm')")   # なし（既定）
+    r.join(b, name)
+    b_adopt = b.wait_for("document.getElementById('bgmTune').checked", timeout=DISCOVER + 5)
+    # 新入り c は「焚き火」を選んでいる → もらわず自分のまま（音楽を奪わない）
+    c = r.open_tab()
+    c.eval("localStorage.setItem('pot-call-bgm','fire')")
+    r.join(c, name)
+    c.wait_for('%s >= 3' % MEMBERS, timeout=DISCOVER)
+    time.sleep(2.5)
+    c_kept = c.eval("document.getElementById('bgmFire').checked")
+    ok = a_tune and b_adopt and c_kept
+    r.check('T60', 'BGM 引き継ぎ（雑談部屋）：なしの人だけ最古の人のをもらう・選んでいる人はそのまま', ok, 'pass',
+            '先客=軽快=%s / なしの人がもらう=%s / 選んでいる人はそのまま=%s' % (a_tune, b_adopt, c_kept))
+    click_leave(a); click_leave(b); click_leave(c)
 
 
 def T28(r, room):
@@ -2654,6 +2715,10 @@ def main():
             T27h(r, room)
         if run('T27i'):
             T27i(r, room)
+        if run('T27j'):
+            T27j(r, room)
+        if run('T60'):
+            T60(r, room)
         # 人数上限は9タブ張るので**明示したときだけ**走らせる（既定の回帰には重すぎる）
         if a.only and 'T29' in a.only:
             T29(r, room)
