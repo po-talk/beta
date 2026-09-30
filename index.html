@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.16
+  ぽっと通話〈実験版〉 v0.15.17
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -686,6 +686,19 @@
   /* 入室通知など中立のシステム行（v0.15.11）：控えめに・中央寄せで会話と区別 */
   .cl-sys{ justify-content:center }
   .cl-sys .cl-text{ flex:none; text-align:center; color:var(--sub); font-size:12px }
+  /* ひとことの行から無視（v0.15.17）：一覧に出ない聞き役でも、コメントした瞬間に行ができる＝そこから無視できる。
+     ハートはメンバー行（.m-ig）と同じ形で**名前の直後**（ハートは「コメント」でなく「人」に向いているので、右端に置かない）。
+     行は密なので常設せず、**行をタップすると出る 2 段階**（誤タップ防止）。自分の行・システム行は対象外。 */
+  .cl-row.can{ cursor:pointer; border-radius:6px }
+  .cl-row.pick{ background:var(--chip) }
+  .cl-ig{ flex:none; width:18px; height:18px; padding:0; margin:0; border:0; background:transparent; cursor:pointer;
+    color:var(--red); display:none; align-items:center; justify-content:center; align-self:center }
+  .cl-ig svg{ width:14px; height:14px; display:block }
+  .cl-row.pick .cl-ig, .cl-ign .cl-ig{ display:inline-flex }
+  .cl-hid{ display:none }                                   /* 無視した人の過去の行（取り消すと戻る） */
+  .cl-ign .cl-text{ color:var(--sub); font-size:12px }
+  .cl-undo{ flex:none; width:auto; margin:0 0 0 4px; padding:0 6px; border:0; background:transparent;
+    color:var(--accent-soft); cursor:pointer; font-size:12px; text-decoration:underline }
   /* 🤫 静かに入る（ロビーのタップ確認の中）。**独立した 1 行**にする（flex-wrap の行に混ぜると
      文の span が潰れる・2026-09-30 に実機で発覚）。幅 100% で自分の行を確保し、文とボタンの並びを壊さない。 */
   .room-quiet{ flex-basis:100%; width:100%; margin:6px 0 2px; font-size:12.5px }
@@ -1373,7 +1386,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.16'
+const APP_VERSION = 'v0.15.17'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -4180,9 +4193,11 @@ const doIgnore = id => {
   removeAnalyser(id)    // 絵文字の跳ねも止める＝画面から気配を消す
   call.nudges.delete(id)
   renderMembers(); renderAudioWarn([])
+  renderChatIgnore(id, true)    // ひとことの過去の行を畳む（v0.15.17）
 }
 const unignorePeer = id => {
   call.ignored.delete(id)
+  renderChatIgnore(id, false)   // 畳んだ行を戻す（v0.15.17）
   // 音は捨ててあるので、相手に送り直してもらう。「音が届いていない」ときと同じ頼み方。
   // 配信部屋で名簿に載っていない相手には頼まない（送ってもらっても鳴らさないので無駄になる）。
   if (canHear(id)) sendTo(call.nudgeAction, 1, id)
@@ -4400,11 +4415,51 @@ const logChat = (uid, text) => {
   who.title = p.name || 'ゲスト'
   const tx = document.createElement('span'); tx.className = 'cl-text'
   tx.textContent = text                    // ★ここも innerHTML にしないこと
-  row.append(em, who, tx)
+  if (me) row.append(em, who, tx)
+  else {
+    // 無視の入口（v0.15.17）：行をタップ → 名前の直後にハート → 押すと ignorePeer（初回は説明ダイアログ）。
+    // 無視済みの相手のひとことは受信で弾かれてここに来ないので、ここのハートは常に「まだ無視していない」形。
+    row.dataset.uid = uid; row.classList.add('can')
+    const ig = document.createElement('button'); ig.type = 'button'; ig.className = 'cl-ig'
+    ig.innerHTML = HEART_SVG               // SVG は定数なので innerHTML で安全
+    ig.title = 'この人の音とひとことを受け取らない（無視。相手には伝わりません）'
+    ig.setAttribute('aria-label', ig.title)
+    ig.onclick = e => { e.stopPropagation(); ignorePeer(uid) }
+    row.onclick = () => pickChatRow(row)
+    row.append(em, who, ig, tx)
+  }
   // スクロールしない（CSS が下詰めで、溢れた行は上で切れる）ので、位置合わせは要らない
   chatLogEl.append(row)
   while (chatLogEl.children.length > CHAT_LOG_MAX) chatLogEl.firstElementChild.remove()
   chatLogEl.hidden = false
+}
+// 行をタップしてハートを出す／引っ込める（同時に出るのは 1 行だけ）。余白をタップすると全部引っ込める。
+const pickChatRow = row => {
+  const on = !row.classList.contains('pick')
+  chatLogEl.querySelectorAll('.cl-row.pick').forEach(r => r.classList.remove('pick'))
+  if (on) row.classList.add('pick')
+}
+chatLogEl.addEventListener('click', e => { if (e.target === chatLogEl) chatLogEl.querySelectorAll('.cl-row.pick').forEach(r => r.classList.remove('pick')) })
+// 無視した人のひとことを畳む／戻す（v0.15.17）。過去の行は**消さずに隠し**、末尾に
+// 「💔 〇〇 を無視しました（取り消す）」を 1 行置く。💔 か「取り消す」で unignorePeer → 行が戻る。
+// メンバー行から無視したとき（登壇者など）も doIgnore 経由でここに来るので、入口が違っても見え方は同じ。
+const renderChatIgnore = (id, on) => {
+  const sel = '.cl-row[data-uid="' + CSS.escape(id) + '"]'
+  const rows = [...chatLogEl.querySelectorAll(sel + ':not(.cl-ign)')]
+  const marks = [...chatLogEl.querySelectorAll('.cl-ign' + '[data-uid="' + CSS.escape(id) + '"]')]
+  if (!on) { marks.forEach(l => l.remove()); rows.forEach(r => r.classList.remove('cl-hid')); return }
+  rows.forEach(r => { r.classList.add('cl-hid'); r.classList.remove('pick') })
+  if (!rows.length || marks.length) return
+  const p = call.profiles.get(id) || {}
+  const line = document.createElement('div'); line.className = 'cl-row cl-ign'; line.dataset.uid = id
+  const ig = document.createElement('button'); ig.type = 'button'; ig.className = 'cl-ig off'
+  ig.innerHTML = HEART_BROKEN_SVG; ig.title = 'この人の音とひとことをまた受け取る'; ig.setAttribute('aria-label', ig.title)
+  ig.onclick = () => unignorePeer(id)
+  const tx = document.createElement('span'); tx.className = 'cl-text'; tx.textContent = (p.name || 'この人') + ' を無視しました'
+  const un = document.createElement('button'); un.type = 'button'; un.className = 'cl-undo'; un.textContent = '取り消す'
+  un.onclick = () => unignorePeer(id)
+  line.append(ig, tx, un)
+  rows[rows.length - 1].after(line)   // 時系列の末尾（その人の最後のひとことの位置）に置く
 }
 // システムのひとこと（入室通知など・v0.15.11）。投稿者に紐付かない中立の行として時間軸に残す。
 const logSystem = text => {
