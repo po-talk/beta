@@ -384,22 +384,6 @@
       font-weight: 600;
     }
 
-    /* 表面張力の液膜ブリッジを描画するSVGレイヤー */
-    #liquid-svg {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-      pointer-events: none;
-      z-index: 10;
-    }
-    .liquid-bridge {
-      fill: url(#bridge-grad);
-      stroke: rgba(255, 255, 255, 0.4);
-      stroke-width: 0.75;
-      opacity: 0.88;
     }
 
     /* 泡と泡の谷間を埋める小バブル（マイクロバブル） */
@@ -576,16 +560,6 @@
   <div id="viewport">
     <div id="world">
       <div id="ambient-bubbles"></div>
-      <!-- 表面張力液膜レイヤー -->
-      <svg id="liquid-svg">
-        <defs>
-          <linearGradient id="bridge-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="rgba(255, 255, 255, 0.55)" />
-            <stop offset="50%" stop-color="rgba(147, 197, 253, 0.35)" />
-            <stop offset="100%" stop-color="rgba(192, 132, 252, 0.38)" />
-          </linearGradient>
-        </defs>
-      </svg>
       <!-- 谷間を埋める小バブルコンテナ -->
       <div id="gap-bubbles"></div>
       <div id="space"></div>
@@ -808,16 +782,6 @@
       g.radius = g.size / 2;
     });
 
-    // 表面張力の液膜ブリッジを描画するための事前プール（12本）
-    const liquidSvg = document.getElementById('liquid-svg');
-    const bridgePaths = [];
-    for (let k = 0; k < 12; k++) {
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('class', 'liquid-bridge');
-      liquidSvg.appendChild(path);
-      bridgePaths.push(path);
-    }
-
     // 【5. マイバブル（個人設定・ロビー待機用）】
     const myProfile = {
       name: 'あなた (Host)',
@@ -989,10 +953,9 @@
       mainRoom.isJoined = false;
       myBubbleNode.active = true;
 
-      // 操作系クラスタと小バブル、液膜を隠す
+      // 操作系クラスタと小バブルを隠す
       controlButtons.forEach(btn => btn.el.classList.add('cluster-hidden'));
       gapBubbles.forEach(g => g.el.classList.add('cluster-hidden'));
-      bridgePaths.forEach(p => p.setAttribute('d', ''));
 
       // マイバブルを表示して現在のカメラ視界中央に出現
       myBubbleNode.el.classList.remove('cluster-hidden');
@@ -1539,89 +1502,8 @@
         });
       }
 
-      // 4. 表面張力の液膜ブリッジのSVG更新（通話中のみ）
-      bridgePairs.forEach((pair, idx) => {
-        if (mainRoom.isJoined) {
-          const a = pair[0];
-          const b = pair[1];
-          const d = getMetaballPath(
-            a.x + a.radius, a.y + a.radius, a.radius,
-            b.x + b.radius, b.y + b.radius, b.radius,
-            90
-          );
-          bridgePaths[idx].setAttribute('d', d);
-        } else {
-          bridgePaths[idx].setAttribute('d', '');
-        }
-      });
-
       requestAnimationFrame(animate);
     }
-
-    // 2つの円の間に表面張力の液膜ブリッジ（メタボール）を生成する関数
-    function getMetaballPath(x1, y1, r1, x2, y2, r2, maxReach = 90) {
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-      const dist = Math.hypot(dx, dy);
-      const touchDist = r1 + r2;
-
-      // 完全に重なりすぎている、または離れすぎている（表面張力が切れた）場合は描画しない
-      if (dist <= Math.abs(r1 - r2) || dist > touchDist + maxReach) {
-        return '';
-      }
-
-      // 距離に応じた膜の厚み（離れるほど細く伸びる）
-      const reach = dist - touchDist;
-      const spread = reach <= 0 ? 1 : Math.max(0, 1 - reach / maxReach);
-      if (spread <= 0.02) return '';
-
-      const angle = Math.atan2(dy, dx);
-      // 接点角度
-      const u1 = Math.asin(Math.min(0.85, (r2 / dist) * 1.3)) * spread;
-      const u2 = Math.asin(Math.min(0.85, (r1 / dist) * 1.3)) * spread;
-
-      const p1aX = x1 + r1 * Math.cos(angle + u1);
-      const p1aY = y1 + r1 * Math.sin(angle + u1);
-      const p1bX = x1 + r1 * Math.cos(angle - u1);
-      const p1bY = y1 + r1 * Math.sin(angle - u1);
-
-      const p2aX = x2 + r2 * Math.cos(angle + Math.PI - u2);
-      const p2aY = y2 + r2 * Math.sin(angle + Math.PI - u2);
-      const p2bX = x2 + r2 * Math.cos(angle + Math.PI + u2);
-      const p2bY = y2 + r2 * Math.sin(angle + Math.PI + u2);
-
-      // くびれ制御点（接点の中点から中心に向かって自然にくびれさせる）
-      const midX = (x1 + x2) * 0.5;
-      const midY = (y1 + y2) * 0.5;
-      const midA_X = (p1aX + p2aX) * 0.5;
-      const midA_Y = (p1aY + p2aY) * 0.5;
-      const midB_X = (p1bX + p2bX) * 0.5;
-      const midB_Y = (p1bY + p2bY) * 0.5;
-
-      const pinch = (1 - spread) * 0.45;
-      const c1X = midA_X + (midX - midA_X) * pinch;
-      const c1Y = midA_Y + (midY - midA_Y) * pinch;
-      const c2X = midB_X + (midX - midB_X) * pinch;
-      const c2Y = midB_Y + (midY - midB_Y) * pinch;
-
-      return `M ${p1aX.toFixed(1)} ${p1aY.toFixed(1)} Q ${c1X.toFixed(1)} ${c1Y.toFixed(1)} ${p2aX.toFixed(1)} ${p2aY.toFixed(1)} L ${p2bX.toFixed(1)} ${p2bY.toFixed(1)} Q ${c2X.toFixed(1)} ${c2Y.toFixed(1)} ${p1bX.toFixed(1)} ${p1bY.toFixed(1)} Z`;
-    }
-
-    // 液膜ブリッジで結ぶペア定義（12組）
-    const bridgePairs = [
-      [mainRoom, controlButtons[0]], // メイン - マイク
-      [mainRoom, controlButtons[1]], // メイン - カメラ
-      [mainRoom, controlButtons[2]], // メイン - 共有
-      [controlButtons[0], controlButtons[1]], // マイク - カメラ
-      [controlButtons[1], controlButtons[2]], // カメラ - 共有
-      [controlButtons[0], controlButtons[3]], // マイク - 拍手
-      [controlButtons[1], controlButtons[3]], // カメラ - 拍手
-      [controlButtons[1], controlButtons[4]], // カメラ - ハート
-      [controlButtons[2], controlButtons[4]], // 共有 - ハート
-      [controlButtons[2], controlButtons[5]], // 共有 - 退出
-      [controlButtons[3], controlButtons[4]], // 拍手 - ハート
-      [controlButtons[4], controlButtons[5]]  // ハート - 退出
-    ];
 
     requestAnimationFrame(animate);
   </script>
