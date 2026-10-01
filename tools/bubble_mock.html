@@ -384,8 +384,6 @@
       font-weight: 600;
     }
 
-    }
-
     /* 泡と泡の谷間を埋める小バブル（マイクロバブル） */
     .gap-bubble {
       position: absolute;
@@ -659,21 +657,27 @@
         camera.vy = 0;
       } else {
         camera.targetScale = optScale;
-        camera.vx = (targetX - camera.x) * 0.1;
-        camera.vy = (targetY - camera.y) * 0.1;
+        // 参加中ならその部屋のクラスター重心、ロビーなら現在の視界中心を保つ
+        if (joinedRoom) {
+          panCameraTo(joinedRoom.anchorX + (CLUSTER_CENTER_X - WORLD_MAIN_CX), joinedRoom.anchorY + (CLUSTER_CENTER_Y - WORLD_MAIN_CY), optScale);
+        }
       }
     }
 
     // 初回カメラ設定（アニメーションなしで一瞬でフィット）
     resetCameraToCenter(false);
 
+    // 部屋サイズ：参加中は JOINED_SIZE、ロビーでは各部屋の lobbySize
+    const JOINED_SIZE = 460;
+
     // 【1. 参加中のメインルーム】大きく、存在感あるサイズ（460px）
     const mainRoom = {
       id: 'room-poppo',
       type: 'room',
       isJoined: true,
-      label: 'ポッポの森 (Talk Room)',
-      size: 460,
+      label: 'ポッポの森',
+      size: JOINED_SIZE,
+      lobbySize: 240,
       x: WORLD_MAIN_CX - 230,
       y: WORLD_MAIN_CY - 230,
       vx: 0,
@@ -697,6 +701,7 @@
         isJoined: false,
         label: 'アイデア会議',
         size: 210,
+        lobbySize: 210,
         x: WORLD_MAIN_CX - 450,
         y: WORLD_MAIN_CY - 280,
         vx: -0.22,
@@ -714,6 +719,7 @@
         isJoined: false,
         label: 'もくもく作業部屋 ☕',
         size: 190,
+        lobbySize: 190,
         x: WORLD_MAIN_CX + 350,
         y: WORLD_MAIN_CY - 260,
         vx: 0.18,
@@ -724,6 +730,21 @@
         ]
       }
     ];
+
+    const rooms = [mainRoom, ...otherRooms];
+    // 現在参加中の部屋（ロビー待機中は null）。操作系バブルはこの部屋に吸着する
+    let joinedRoom = mainRoom;
+    mainRoom.anchorX = WORLD_MAIN_CX;
+    mainRoom.anchorY = WORLD_MAIN_CY;
+
+    // 子バブルの大きさは親の大きさに連動（ロビーサイズ→small、参加サイズ→big）
+    rooms.forEach(r => r.children.forEach(c => {
+      c.room = r;
+      c.big = r.isJoined ? c.size : Math.round(c.size * 1.4);
+      c.small = r.isJoined ? Math.round(c.size * 0.72) : c.size;
+    }));
+    // 「あなた」の泡（参加中の部屋の子として出入りする）
+    const me = mainRoom.children.find(c => c.id === 'u-host');
 
     // 半径と角度（度数法）からメインルーム中心相対オフセットを算出
     const makeOrbit = (radius, deg) => {
@@ -817,10 +838,8 @@
         // ルーム名と人数バッジ
         const badge = document.createElement('div');
         badge.className = 'room-badge';
-        const statusDot = n.isJoined ? `<span class="badge-status"></span>` : `<span class="badge-status other"></span>`;
-        const joinTag = n.isJoined ? `<span style="color:#86efac;font-size:0.7rem;margin-left:2px;">(参加中)</span>` : '';
-        badge.innerHTML = `${statusDot}<span>${n.label}</span>${joinTag}<span class="count">${n.children.length}人</span>`;
         el.appendChild(badge);
+        n.badgeEl = badge;
 
         // 部屋のクリックインタラクション（未参加なら参加する）
         el.addEventListener('click', (e) => {
@@ -849,7 +868,7 @@
 
           // 子バブルのクリックで発言切り替え（参加中ルームのみ）
           childEl.addEventListener('click', (e) => {
-            if (!n.isJoined) return;
+            if (!c.room.isJoined) return;
             e.stopPropagation();
             c.isSpeaking = !c.isSpeaking;
             childEl.classList.toggle('speaking', c.isSpeaking);
@@ -890,12 +909,9 @@
             myProfile.avatar = item.textContent;
             bigAvatar.textContent = myProfile.avatar;
             paletteItems.forEach(pi => pi.classList.toggle('active', pi === item));
-            // 参加中アバターにも反映
-            const hostChild = mainRoom.children.find(c => c.id === 'u-host');
-            if (hostChild && hostChild.el) {
-              hostChild.avatar = myProfile.avatar;
-              hostChild.el.querySelector('.user-avatar').textContent = myProfile.avatar;
-            }
+            // 「あなた」の泡にも反映
+            me.avatar = myProfile.avatar;
+            me.el.querySelector('.user-avatar').textContent = myProfile.avatar;
           });
         });
 
@@ -903,11 +919,8 @@
         const nameInput = el.querySelector('.my-name-input');
         nameInput.addEventListener('input', (e) => {
           myProfile.name = e.target.value.trim() || 'あなた';
-          const hostChild = mainRoom.children.find(c => c.id === 'u-host');
-          if (hostChild && hostChild.el) {
-            hostChild.name = myProfile.name;
-            hostChild.el.querySelector('.user-name').textContent = myProfile.name;
-          }
+          me.name = myProfile.name;
+          me.el.querySelector('.user-name').textContent = myProfile.name;
         });
         nameInput.addEventListener('mousedown', e => e.stopPropagation());
         nameInput.addEventListener('touchstart', e => e.stopPropagation());
@@ -947,90 +960,110 @@
       setupDrag(n);
     });
 
-    // 退出処理（メインルームを未参加化して縮小、マイバブルを視界中央に表示）
-    function leaveRoom() {
-      if (!mainRoom.isJoined) return;
-      mainRoom.isJoined = false;
-      myBubbleNode.active = true;
+    // ルームバッジの描画（部屋名・参加中タグ・人数）
+    function renderBadge(room) {
+      const dot = room.isJoined ? `<span class="badge-status"></span>` : `<span class="badge-status other"></span>`;
+      const joinTag = room.isJoined ? `<span style="color:#86efac;font-size:0.7rem;margin-left:2px;">(参加中)</span>` : '';
+      room.badgeEl.innerHTML = `${dot}<span>${room.label}</span>${joinTag}<span class="count">${room.children.length}人</span>`;
+    }
+    rooms.forEach(renderBadge);
+
+    // 退出処理（参加中の部屋をロビーサイズに戻す。showProfile ならマイバブルを視界中央に表示）
+    function leaveRoom(showProfile = true) {
+      const room = joinedRoom;
+      if (!room) return;
+      joinedRoom = null;
+      room.isJoined = false;
 
       // 操作系クラスタと小バブルを隠す
       controlButtons.forEach(btn => btn.el.classList.add('cluster-hidden'));
       gapBubbles.forEach(g => g.el.classList.add('cluster-hidden'));
 
-      // マイバブルを表示して現在のカメラ視界中央に出現
+      // 部屋を未参加化して縮小し、ふわっと漂い出させる
+      room.el.classList.remove('room-joined');
+      room.el.classList.add('room-other');
+      room.targetSize = room.lobbySize;
+      room.vx = 0.22;
+      room.vy = -0.16;
+
+      // あなたを部屋から抜く
+      room.children = room.children.filter(c => c !== me);
+      me.el.remove();
+      me.isSpeaking = false;
+      me.el.classList.remove('speaking');
+      me.el.querySelector('.speaking-tag')?.remove();
+      renderBadge(room);
+
+      if (!showProfile) return;
+      myBubbleNode.active = true;
       myBubbleNode.el.classList.remove('cluster-hidden');
       const viewCenterX = (window.innerWidth / 2 - camera.x) / camera.scale;
       const viewCenterY = (window.innerHeight / 2 - camera.y) / camera.scale;
       myBubbleNode.x = viewCenterX - myBubbleNode.radius;
       myBubbleNode.y = viewCenterY - myBubbleNode.radius;
+      myBubbleNode.anchorX = viewCenterX;
+      myBubbleNode.anchorY = viewCenterY;
       myBubbleNode.vx = 0;
       myBubbleNode.vy = 0;
 
-      // メインルーム（ポッポの森）の未参加化
-      mainRoom.el.classList.remove('room-joined');
-      mainRoom.el.classList.add('room-other');
-      mainRoom.targetSize = 220; // 縮小目標
-      mainRoom.vx = 0.22;
-      mainRoom.vy = -0.16;
-
-      // あなたを部屋から一時的に非表示
-      const hostChild = mainRoom.children.find(c => c.id === 'u-host');
-      if (hostChild && hostChild.el) hostChild.el.style.display = 'none';
-
-      // バッジ更新
-      const badge = mainRoom.el.querySelector('.room-badge');
-      if (badge) {
-        badge.innerHTML = `<span class="badge-status other"></span><span>ポッポの森</span><span class="count">5人</span>`;
-      }
-
-      // HUD更新
-      updateHud('ロビー待機中 ／ プロフィール変更中', '3 部屋 稼働中 (待機中)');
+      updateHud('ロビー待機中 ／ プロフィール変更中', `${rooms.length} 部屋 稼働中 (待機中)`);
     }
 
-    // 部屋への再参加処理（タップした部屋をメイン化）
+    // 部屋への参加処理（タップした部屋を参加中にする。別の部屋にいれば先に抜ける）
     function joinRoom(room) {
       if (room.isJoined) return;
+      if (joinedRoom) leaveRoom(false);
       myBubbleNode.active = false;
       myBubbleNode.el.classList.add('cluster-hidden');
 
+      joinedRoom = room;
       room.isJoined = true;
-      room.targetSize = 460; // 拡大目標
+      room.targetSize = JOINED_SIZE;
+      room.vx = 0; room.vy = 0;
       room.el.classList.add('room-joined');
       room.el.classList.remove('room-other');
 
-      // あなたを部屋に参加
-      const hostChild = room.children.find(c => c.id === 'u-host');
-      if (hostChild && hostChild.el) {
-        hostChild.avatar = myProfile.avatar;
-        hostChild.name = myProfile.name;
-        hostChild.el.querySelector('.user-avatar').textContent = myProfile.avatar;
-        hostChild.el.querySelector('.user-name').textContent = myProfile.name;
-        hostChild.el.style.display = 'flex';
-      }
+      // 部屋の現在の中心をその場に係留（サイズは中心を保ったまま拡大する）
+      const cx = room.x + room.radius;
+      const cy = room.y + room.radius;
+      room.anchorX = cx;
+      room.anchorY = cy;
 
-      // バッジ更新
-      const badge = room.el.querySelector('.room-badge');
-      if (badge) {
-        badge.innerHTML = `<span class="badge-status"></span><span>${room.label}</span><span style="color:#86efac;font-size:0.7rem;margin-left:2px;">(参加中)</span><span class="count">${room.children.length}人</span>`;
-      }
+      // あなたを部屋に入れる（上寄りから入場）
+      me.avatar = myProfile.avatar;
+      me.name = myProfile.name;
+      me.el.querySelector('.user-avatar').textContent = myProfile.avatar;
+      me.el.querySelector('.user-name').textContent = myProfile.name;
+      me.room = room;
+      me.x = room.radius - me.radius;
+      me.y = Math.max(20, room.radius * 0.35 - me.radius);
+      me.vx = 0; me.vy = 0;
+      room.children.push(me);
+      room.el.appendChild(me.el);
+      renderBadge(room);
 
       // 操作系クラスタと小バブルを再表示して吸着位置へ
       controlButtons.forEach(btn => {
         btn.el.classList.remove('cluster-hidden');
-        btn.x = room.x + room.radius + btn.orbitOffsetX - btn.radius;
-        btn.y = room.y + room.radius + btn.orbitOffsetY - btn.radius;
+        btn.x = cx + btn.orbitOffsetX - btn.radius;
+        btn.y = cy + btn.orbitOffsetY - btn.radius;
         btn.vx = 0; btn.vy = 0;
       });
       gapBubbles.forEach(g => g.el.classList.remove('cluster-hidden'));
 
-      // HUD更新
-      updateHud(`参加中：${room.label} ／ 周辺に他の部屋が浮遊中`, '3 部屋 稼働中 (参加 1 / 未参加 2)');
+      const others = rooms.length - 1;
+      updateHud(`参加中：${room.label}`, `${rooms.length} 部屋 稼働中 (参加 1 / 未参加 ${others})`);
 
-      // カメラを部屋の中心へスムーズに誘導
-      const targetX = (window.innerWidth / 2) - (room.x + room.radius + 45) * camera.scale;
-      const targetY = (window.innerHeight / 2) - (room.y + room.radius + 30) * camera.scale;
-      camera.vx = (targetX - camera.x) * 0.12;
-      camera.vy = (targetY - camera.y) * 0.12;
+      // カメラをクラスター重心（部屋中心＋操作系の張り出し分）へスムーズに誘導
+      panCameraTo(cx + (CLUSTER_CENTER_X - WORLD_MAIN_CX), cy + (CLUSTER_CENTER_Y - WORLD_MAIN_CY));
+    }
+
+    // ワールド座標 (wx, wy) が画面中央に来るよう慣性で移動（減衰 0.92 で総移動量がちょうど一致）
+    function panCameraTo(wx, wy, scale = camera.targetScale) {
+      const targetX = (window.innerWidth / 2) - wx * scale;
+      const targetY = (window.innerHeight / 2) - wy * scale;
+      camera.vx = (targetX - camera.x) * (1 - 0.92);
+      camera.vy = (targetY - camera.y) * (1 - 0.92);
     }
 
     // HUDテキストの更新
@@ -1083,9 +1116,9 @@
         if (Math.hypot(clientX - startX, clientY - startY) > 5) n.wasDragged = true;
 
         // 操作ボタンの場合、吸着点付近では表面張力の粘り抵抗（引き剥がす重み）
-        if (n.type === 'btn') {
-          const mainCenterX = mainRoom.x + mainRoom.radius;
-          const mainCenterY = mainRoom.y + mainRoom.radius;
+        if (n.type === 'btn' && joinedRoom) {
+          const mainCenterX = joinedRoom.x + joinedRoom.radius;
+          const mainCenterY = joinedRoom.y + joinedRoom.radius;
           const targetX = mainCenterX + n.orbitOffsetX - n.radius;
           const targetY = mainCenterY + n.orbitOffsetY - n.radius;
           const distToTarget = Math.hypot(n.x - targetX, n.y - targetY);
@@ -1304,19 +1337,19 @@
         camera.needsUpdate = false;
       }
 
-      // メインルームの中心座標
-      const mainCenterX = mainRoom.x + mainRoom.radius;
-      const mainCenterY = mainRoom.y + mainRoom.radius;
+      // 参加中の部屋の中心座標（操作系バブルの吸着基準）
+      const mainCenterX = joinedRoom ? joinedRoom.x + joinedRoom.radius : 0;
+      const mainCenterY = joinedRoom ? joinedRoom.y + joinedRoom.radius : 0;
 
       // 1. 各ノードの物理更新（ふわっふわな無重力浮遊 ＆ ぷるぷる表面張力）
       allNodes.forEach((n, i) => {
         if (!n.isDragging) {
           if (n.type === 'room' && n.isJoined) {
-            // 参加中メインルーム：宇宙をゆったり大きく漂う（ふわふわ呼吸）
+            // 参加中の部屋：係留点のまわりをゆったり漂う（ふわふわ呼吸）
             n.vx += Math.sin(time * 0.7) * 0.035;
             n.vy += Math.cos(time * 0.5) * 0.030;
-            n.vx += (WORLD_MAIN_CX - mainCenterX) * 0.00015;
-            n.vy += (WORLD_MAIN_CY - mainCenterY) * 0.00015;
+            n.vx += (n.anchorX - (n.x + n.radius)) * 0.0015;
+            n.vy += (n.anchorY - (n.y + n.radius)) * 0.0015;
             n.vx *= 0.978;
             n.vy *= 0.978;
 
@@ -1325,13 +1358,15 @@
             if (n.active) {
               n.vx += Math.sin(time * 0.8) * 0.04;
               n.vy += Math.cos(time * 0.6) * 0.04;
+              n.vx += (n.anchorX - (n.x + n.radius)) * 0.0015;
+              n.vy += (n.anchorY - (n.y + n.radius)) * 0.0015;
               n.vx *= 0.978;
               n.vy *= 0.978;
             }
 
           } else if (n.type === 'btn') {
             // 操作系バブル：メインルームの動きに連動して「ぷるるんっ」とゼリーのように弾力追従
-            if (mainRoom.isJoined) {
+            if (joinedRoom) {
               const targetX = mainCenterX + n.orbitOffsetX - n.radius;
               const targetY = mainCenterY + n.orbitOffsetY - n.radius;
               const dx = targetX - n.x;
@@ -1372,12 +1407,26 @@
           }
         }
 
-        // 部屋のサイズのアニメーション（参加/退出時のスムーズ拡大・縮小）
+        // 部屋のサイズのアニメーション（参加/退出時のスムーズ拡大・縮小。中心は保つ）
         if (n.type === 'room' && n.targetSize && Math.abs(n.size - n.targetSize) > 0.5) {
-          n.size += (n.targetSize - n.size) * 0.08;
+          const half = (n.targetSize - n.size) * 0.08 / 2;
+          n.size += half * 2;
           n.radius = n.size / 2;
+          n.x -= half; n.y -= half;
           n.el.style.width = `${n.size.toFixed(1)}px`;
           n.el.style.height = `${n.size.toFixed(1)}px`;
+
+          // 子バブルも親の大きさに合わせて拡大・縮小（親の中心からの相対位置を保つ）
+          const t = Math.max(0, Math.min(1, (n.size - n.lobbySize) / (JOINED_SIZE - n.lobbySize)));
+          n.children.forEach(c => {
+            const newSize = c.small + (c.big - c.small) * t;
+            c.x += half - (newSize - c.size) / 2;
+            c.y += half - (newSize - c.size) / 2;
+            c.size = newSize;
+            c.radius = newSize / 2;
+            c.el.style.width = `${newSize.toFixed(1)}px`;
+            c.el.style.height = `${newSize.toFixed(1)}px`;
+          });
         }
 
         // 部屋どうしの衝突判定
@@ -1392,15 +1441,18 @@
               if (dist < minDist) {
                 const overlap = (minDist - dist) * 0.5;
                 const nx = dx / (dist || 1); const ny = dy / (dist || 1);
-                if (!n.isDragging) { n.x -= nx * overlap * 0.5; n.y -= ny * overlap * 0.5; n.vx -= nx * 0.03; n.vy -= ny * 0.03; }
-                if (!other.isDragging) { other.x += nx * overlap * 0.5; other.y += ny * overlap * 0.5; other.vx += nx * 0.03; other.vy += ny * 0.03; }
+                // マイバブルは視界中央に居座り、部屋のほうが押しのけられる
+                const wn = n.type === 'personal' ? 0 : other.type === 'personal' ? 2 : 1;
+                const wo = 2 - wn;
+                if (!n.isDragging) { n.x -= nx * overlap * 0.5 * wn; n.y -= ny * overlap * 0.5 * wn; n.vx -= nx * 0.03 * wn; n.vy -= ny * 0.03 * wn; }
+                if (!other.isDragging) { other.x += nx * overlap * 0.5 * wo; other.y += ny * overlap * 0.5 * wo; other.vx += nx * 0.03 * wo; other.vy += ny * 0.03 * wo; }
               }
             }
           }
         }
 
         // 操作系バブル同士の接触クッション（通話中のみ）
-        if (n.type === 'btn' && mainRoom.isJoined) {
+        if (n.type === 'btn' && joinedRoom) {
           for (let j = i + 1; j < allNodes.length; j++) {
             const other = allNodes[j];
             if (other.type === 'btn') {
@@ -1493,7 +1545,7 @@
       });
 
       // 3. 隙間小バブルの座標更新（通話中のみ）
-      if (mainRoom.isJoined) {
+      if (joinedRoom) {
         gapBubbles.forEach(g => {
           const targetX = mainCenterX + g.orbitOffsetX - g.radius;
           const targetY = mainCenterY + g.orbitOffsetY - g.radius;
