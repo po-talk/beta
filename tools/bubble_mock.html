@@ -86,6 +86,7 @@
       backdrop-filter: blur(5px);
       -webkit-backdrop-filter: blur(5px);
       will-change: transform;
+      touch-action: none;
       box-shadow: 
         inset 0 0 35px rgba(255, 255, 255, 0.25),
         inset -12px -12px 30px rgba(192, 132, 252, 0.3),
@@ -1168,6 +1169,7 @@
         }
       }, { passive: true });
       window.addEventListener('touchend', onEnd);
+      window.addEventListener('touchcancel', onEnd);
     }
 
     // 【オープンワールド操作イベント】背景ドラッグで自由パン ＆ ピンチ/ホイールでズーム
@@ -1292,6 +1294,11 @@
         camera.lastPanY = e.touches[0].clientY;
         camera.panHistory = [];
       }
+    });
+
+    viewport.addEventListener('touchcancel', () => {
+      camera.isPanning = false;
+      camera.initialPinchDist = 0;
     });
 
     window.addEventListener('resize', () => {
@@ -1584,6 +1591,8 @@
       const p2bY = y2 + r2 * Math.sin(angle + Math.PI + u2);
 
       // くびれ制御点（接点の中点から中心に向かって自然にくびれさせる）
+      const midX = (x1 + x2) * 0.5;
+      const midY = (y1 + y2) * 0.5;
       const midA_X = (p1aX + p2aX) * 0.5;
       const midA_Y = (p1aY + p2aY) * 0.5;
       const midB_X = (p1bX + p2bX) * 0.5;
