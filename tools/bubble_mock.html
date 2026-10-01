@@ -83,8 +83,9 @@
       text-align: center;
       transition: box-shadow 0.25s, transform 0.08s ease-out;
       border: 1.5px solid rgba(255, 255, 255, 0.45);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      will-change: transform;
       box-shadow: 
         inset 0 0 35px rgba(255, 255, 255, 0.25),
         inset -12px -12px 30px rgba(192, 132, 252, 0.3),
@@ -205,7 +206,7 @@
         inset 0 0 15px rgba(255, 255, 255, 0.45),
         inset -4px -4px 10px rgba(192, 132, 252, 0.25),
         0 4px 14px rgba(0, 0, 0, 0.25);
-      backdrop-filter: blur(4px);
+      will-change: transform;
       transition: transform 0.1s ease-out, box-shadow 0.2s;
       z-index: 5;
     }
@@ -395,8 +396,9 @@
     }
     .liquid-bridge {
       fill: url(#bridge-grad);
-      filter: drop-shadow(0 0 6px rgba(147, 197, 253, 0.4));
-      opacity: 0.85;
+      stroke: rgba(255, 255, 255, 0.4);
+      stroke-width: 0.75;
+      opacity: 0.88;
     }
 
     /* 泡と泡の谷間を埋める小バブル（マイクロバブル） */
@@ -408,12 +410,11 @@
       pointer-events: none;
       background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.1) 60%, rgba(147, 197, 253, 0.35) 100%);
       border: 1.2px solid rgba(255, 255, 255, 0.65);
+      will-change: transform;
       box-shadow: 
         inset 0 0 8px rgba(255, 255, 255, 0.45),
         inset -2px -2px 5px rgba(192, 132, 252, 0.3),
         0 2px 10px rgba(0, 0, 0, 0.25);
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
       z-index: 11;
     }
     .gap-bubble::after {
@@ -640,6 +641,7 @@
       scale: 1,
       targetScale: 1,
       isPanning: false,
+      needsUpdate: true,
       panStartX: 0,
       panStartY: 0,
       lastPanX: 0,
@@ -671,6 +673,7 @@
 
       const targetX = (w / 2) - CLUSTER_CENTER_X * optScale;
       const targetY = (h / 2) - CLUSTER_CENTER_Y * optScale;
+      camera.needsUpdate = true;
 
       if (!smooth) {
         camera.scale = optScale;
@@ -1300,56 +1303,64 @@
     function animate() {
       time += 0.012;
 
-      // 0. カメラ慣性スクロールとスケールイージング
+      // 0. カメラ慣性スクロールとスケールイージング（動いている時だけ親レイヤーを更新）
+      let cameraMoved = false;
       if (!camera.isPanning) {
-        camera.x += camera.vx;
-        camera.y += camera.vy;
-        camera.vx *= 0.92;
-        camera.vy *= 0.92;
-        if (Math.abs(camera.vx) < 0.02) camera.vx = 0;
-        if (Math.abs(camera.vy) < 0.02) camera.vy = 0;
+        if (Math.abs(camera.vx) > 0.01 || Math.abs(camera.vy) > 0.01) {
+          camera.x += camera.vx;
+          camera.y += camera.vy;
+          camera.vx *= 0.92;
+          camera.vy *= 0.92;
+          cameraMoved = true;
+        } else {
+          camera.vx = 0;
+          camera.vy = 0;
+        }
+      } else {
+        cameraMoved = true;
       }
 
       if (Math.abs(camera.scale - camera.targetScale) > 0.0005) {
         camera.scale += (camera.targetScale - camera.scale) * 0.12;
+        cameraMoved = true;
       }
 
-      // ワールドへのトランスフォーム適用
-      world.style.transform = `translate3d(${camera.x.toFixed(2)}px, ${camera.y.toFixed(2)}px, 0) scale(${camera.scale.toFixed(4)})`;
-
-      // 背景星屑パララックス（カメラ移動の12%で視差スクロール）
-      if (bgStars) {
-        bgStars.style.transform = `translate3d(${(camera.x * 0.12).toFixed(1)}px, ${(camera.y * 0.12).toFixed(1)}px, 0)`;
+      // カメラが動いたフレームのみ親レイヤーを更新（静止時の毎フレーム再合成ゼロ化！）
+      if (cameraMoved || camera.needsUpdate) {
+        world.style.transform = `translate3d(${camera.x.toFixed(2)}px, ${camera.y.toFixed(2)}px, 0) scale(${camera.scale.toFixed(4)})`;
+        if (bgStars) {
+          bgStars.style.transform = `translate3d(${(camera.x * 0.12).toFixed(1)}px, ${(camera.y * 0.12).toFixed(1)}px, 0)`;
+        }
+        camera.needsUpdate = false;
       }
 
       // メインルームの中心座標
       const mainCenterX = mainRoom.x + mainRoom.radius;
       const mainCenterY = mainRoom.y + mainRoom.radius;
 
-      // 1. 各ノードの物理更新
+      // 1. 各ノードの物理更新（ふわっふわな無重力浮遊 ＆ ぷるぷる表面張力）
       allNodes.forEach((n, i) => {
         if (!n.isDragging) {
           if (n.type === 'room' && n.isJoined) {
-            // 参加中メインルーム：ワールド原点付近でゆったり落ち着く穏やかな浮遊
-            n.vx += Math.sin(time * 0.8) * 0.005;
-            n.vy += Math.cos(time * 0.8) * 0.005;
-            // 原点へ戻る極めて緩やかな引力
-            n.vx += (WORLD_MAIN_CX - mainCenterX) * 0.0003;
-            n.vy += (WORLD_MAIN_CY - mainCenterY) * 0.0003;
-            n.vx *= 0.985;
-            n.vy *= 0.985;
+            // 参加中メインルーム：宇宙をゆったり大きく漂う（ふわふわ呼吸）
+            n.vx += Math.sin(time * 0.7) * 0.035;
+            n.vy += Math.cos(time * 0.5) * 0.030;
+            n.vx += (WORLD_MAIN_CX - mainCenterX) * 0.00015;
+            n.vy += (WORLD_MAIN_CY - mainCenterY) * 0.00015;
+            n.vx *= 0.978;
+            n.vy *= 0.978;
 
           } else if (n.type === 'personal') {
             // マイバブル（退出後）：その場付近でゆったり浮遊
             if (n.active) {
-              n.vx += Math.sin(time * 0.9) * 0.006;
-              n.vy += Math.cos(time * 0.9) * 0.006;
-              n.vx *= 0.985;
-              n.vy *= 0.985;
+              n.vx += Math.sin(time * 0.8) * 0.04;
+              n.vy += Math.cos(time * 0.6) * 0.04;
+              n.vx *= 0.978;
+              n.vy *= 0.978;
             }
 
           } else if (n.type === 'btn') {
-            // 操作系バブル：通話中のみメインルーム右下へ表面張力で吸着
+            // 操作系バブル：メインルームの動きに連動して「ぷるるんっ」とゼリーのように弾力追従
             if (mainRoom.isJoined) {
               const targetX = mainCenterX + n.orbitOffsetX - n.radius;
               const targetY = mainCenterY + n.orbitOffsetY - n.radius;
@@ -1357,23 +1368,24 @@
               const dy = targetY - n.y;
               const distToTarget = Math.hypot(dx, dy);
 
-              const tension = distToTarget < 75 ? 0.065 : 0.038;
+              const tension = distToTarget < 80 ? 0.042 : 0.028;
               n.vx += dx * tension;
               n.vy += dy * tension;
 
-              n.vx += Math.sin(time * 2.8 + i) * 0.012;
-              n.vy += Math.cos(time * 2.8 + i) * 0.012;
+              // 各ボタン独自のふわふわ微振動
+              n.vx += Math.sin(time * 2.2 + i * 1.3) * 0.055;
+              n.vy += Math.cos(time * 1.8 + i * 1.3) * 0.055;
 
-              n.vx *= 0.88;
-              n.vy *= 0.88;
+              n.vx *= 0.93; // しなやかな弾性
+              n.vy *= 0.93;
             }
 
           } else if (n.type === 'room' && !n.isJoined) {
-            // 未参加の部屋（ポッポの森含む）：広大な宇宙空間を大きくふわふわと飛ぶ
-            n.vx += Math.sin(time * 0.6 + i * 2) * 0.012;
-            n.vy += Math.cos(time * 0.6 + i * 2) * 0.012;
-            n.vx *= 0.995;
-            n.vy *= 0.995;
+            // 未参加の部屋（ポッポの森含む）：広大な宇宙空間を大きくふわふわと巡回
+            n.vx += Math.sin(time * 0.5 + i * 2.1) * 0.04;
+            n.vy += Math.cos(time * 0.4 + i * 2.1) * 0.04;
+            n.vx *= 0.99;
+            n.vy *= 0.99;
           }
 
           n.x += n.vx;
@@ -1438,13 +1450,14 @@
 
         // DOMへ位置とぷるぷるエフェクトを反映
         if (n.type === 'btn') {
-          const squish = Math.sin(time * 3 + i) * 0.015;
-          const scaleX = (1 + squish - n.vy * 0.004).toFixed(3);
-          const scaleY = (1 - squish + n.vy * 0.004).toFixed(3);
+          const squish = Math.sin(time * 2.6 + i * 1.2) * 0.032;
+          const speedDeform = Math.max(-0.05, Math.min(0.05, n.vy * 0.012));
+          const scaleX = (1 + squish - speedDeform).toFixed(3);
+          const scaleY = (1 - squish + speedDeform).toFixed(3);
           n.el.style.transform = `translate3d(${n.x.toFixed(1)}px, ${n.y.toFixed(1)}px, 0) scale(${scaleX}, ${scaleY})`;
         } else {
-          const breath = (n.type === 'room' || n.type === 'personal') ? (Math.sin(time * 1.2 + i) * 0.008 + 1) : 1;
-          n.el.style.transform = `translate3d(${n.x.toFixed(1)}px, ${n.y.toFixed(1)}px, 0) scale(${breath})`;
+          const breath = (n.type === 'room' || n.type === 'personal') ? (Math.sin(time * 1.1 + i * 1.5) * 0.022 + 1) : 1;
+          n.el.style.transform = `translate3d(${n.x.toFixed(1)}px, ${n.y.toFixed(1)}px, 0) scale(${breath.toFixed(3)})`;
         }
 
         // 2. ルーム内の子バブル物理（参加者）
@@ -1455,14 +1468,14 @@
             const childCy = c.y + c.radius;
             const toCenterX = n.radius - childCx;
             const toCenterY = n.radius - childCy;
-            c.vx += toCenterX * 0.0018;
-            c.vy += toCenterY * 0.0018;
+            c.vx += toCenterX * 0.0012;
+            c.vy += toCenterY * 0.0012;
 
-            c.vx += Math.sin(time * 2.5 + ci) * 0.015;
-            c.vy += Math.cos(time * 2.5 + ci) * 0.015;
+            c.vx += Math.sin(time * 1.8 + ci * 1.4) * 0.065;
+            c.vy += Math.cos(time * 1.5 + ci * 1.4) * 0.065;
 
-            c.vx *= 0.96;
-            c.vy *= 0.96;
+            c.vx *= 0.975;
+            c.vy *= 0.975;
             c.x += c.vx;
             c.y += c.vy;
 
@@ -1514,7 +1527,7 @@
         gapBubbles.forEach(g => {
           const targetX = mainCenterX + g.orbitOffsetX - g.radius;
           const targetY = mainCenterY + g.orbitOffsetY - g.radius;
-          const pulse = Math.sin(time * 3 + g.pulse) * 0.06 + 1;
+          const pulse = Math.sin(time * 2.8 + g.pulse) * 0.08 + 1;
           g.el.style.transform = `translate3d(${targetX.toFixed(1)}px, ${targetY.toFixed(1)}px, 0) scale(${pulse.toFixed(3)})`;
         });
       }
