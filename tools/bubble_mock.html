@@ -21,10 +21,20 @@
       width: 100vw;
     }
 
-    #space {
+    #space,
+    #ambient-bubbles,
+    #gap-bubbles {
       position: absolute;
-      inset: 0;
-      overflow: hidden;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: auto;
+    }
+    #ambient-bubbles,
+    #gap-bubbles {
+      pointer-events: none;
     }
 
     /* 背景の星雲光とグリッター */
@@ -527,6 +537,7 @@
       height: 100%;
       transform-origin: 0 0;
       will-change: transform;
+      overflow: visible;
     }
 
     /* スマホ画面向けのレスポンシブ最適化 */
@@ -616,9 +627,9 @@
     const WORLD_MAIN_CY = 480;
 
     // メインルーム＋操作系クラスターの視覚重心（画面中心に持ってくる目標点）
-    const CLUSTER_CENTER_X = 565; // メイン中心よりやや右下
-    const CLUSTER_CENTER_Y = 515;
-    const CLUSTER_SPAN = 570;     // クラスターの横幅・縦幅の占有エリア
+    const CLUSTER_CENTER_X = 585; // メイン中心よりやや右下
+    const CLUSTER_CENTER_Y = 545;
+    const CLUSTER_SPAN = 610;     // クラスターの横幅・縦幅の占有エリア
 
     // 【オープンワールド・カメラシステム】
     const camera = {
@@ -1559,17 +1570,17 @@
       const p2bX = x2 + r2 * Math.cos(angle + Math.PI + u2);
       const p2bY = y2 + r2 * Math.sin(angle + Math.PI + u2);
 
-      // くびれ制御点（中間点から法線方向に適度にくびれさせる）
-      const midX = (x1 + x2) * 0.5;
-      const midY = (y1 + y2) * 0.5;
-      const waist = Math.min(r1, r2) * 0.65 * spread;
-      const nx = -Math.sin(angle);
-      const ny = Math.cos(angle);
+      // くびれ制御点（接点の中点から中心に向かって自然にくびれさせる）
+      const midA_X = (p1aX + p2aX) * 0.5;
+      const midA_Y = (p1aY + p2aY) * 0.5;
+      const midB_X = (p1bX + p2bX) * 0.5;
+      const midB_Y = (p1bY + p2bY) * 0.5;
 
-      const c1X = midX + nx * waist;
-      const c1Y = midY + ny * waist;
-      const c2X = midX - nx * waist;
-      const c2Y = midY - ny * waist;
+      const pinch = (1 - spread) * 0.45;
+      const c1X = midA_X + (midX - midA_X) * pinch;
+      const c1Y = midA_Y + (midY - midA_Y) * pinch;
+      const c2X = midB_X + (midX - midB_X) * pinch;
+      const c2Y = midB_Y + (midY - midB_Y) * pinch;
 
       return `M ${p1aX.toFixed(1)} ${p1aY.toFixed(1)} Q ${c1X.toFixed(1)} ${c1Y.toFixed(1)} ${p2aX.toFixed(1)} ${p2aY.toFixed(1)} L ${p2bX.toFixed(1)} ${p2bY.toFixed(1)} Q ${c2X.toFixed(1)} ${c2Y.toFixed(1)} ${p1bX.toFixed(1)} ${p1bY.toFixed(1)} Z`;
     }
