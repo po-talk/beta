@@ -21,20 +21,10 @@
       width: 100vw;
     }
 
-    #space,
-    #ambient-bubbles,
-    #gap-bubbles {
+    #space {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-      pointer-events: auto;
-    }
-    #ambient-bubbles,
-    #gap-bubbles {
-      pointer-events: none;
+      inset: 0;
+      overflow: hidden;
     }
 
     /* 背景の星雲光とグリッター */
@@ -83,10 +73,8 @@
       text-align: center;
       transition: box-shadow 0.25s, transform 0.08s ease-out;
       border: 1.5px solid rgba(255, 255, 255, 0.45);
-      backdrop-filter: blur(5px);
-      -webkit-backdrop-filter: blur(5px);
-      will-change: transform;
-      touch-action: none;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       box-shadow: 
         inset 0 0 35px rgba(255, 255, 255, 0.25),
         inset -12px -12px 30px rgba(192, 132, 252, 0.3),
@@ -207,7 +195,7 @@
         inset 0 0 15px rgba(255, 255, 255, 0.45),
         inset -4px -4px 10px rgba(192, 132, 252, 0.25),
         0 4px 14px rgba(0, 0, 0, 0.25);
-      will-change: transform;
+      backdrop-filter: blur(4px);
       transition: transform 0.1s ease-out, box-shadow 0.2s;
       z-index: 5;
     }
@@ -387,19 +375,16 @@
     /* 表面張力の液膜ブリッジを描画するSVGレイヤー */
     #liquid-svg {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
       pointer-events: none;
       z-index: 10;
     }
     .liquid-bridge {
       fill: url(#bridge-grad);
-      stroke: rgba(255, 255, 255, 0.4);
-      stroke-width: 0.75;
-      opacity: 0.88;
+      filter: drop-shadow(0 0 6px rgba(147, 197, 253, 0.4));
+      opacity: 0.85;
     }
 
     /* 泡と泡の谷間を埋める小バブル（マイクロバブル） */
@@ -411,11 +396,12 @@
       pointer-events: none;
       background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.1) 60%, rgba(147, 197, 253, 0.35) 100%);
       border: 1.2px solid rgba(255, 255, 255, 0.65);
-      will-change: transform;
       box-shadow: 
         inset 0 0 8px rgba(255, 255, 255, 0.45),
         inset -2px -2px 5px rgba(192, 132, 252, 0.3),
         0 2px 10px rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       z-index: 11;
     }
     .gap-bubble::after {
@@ -518,180 +504,58 @@
       transform: scale(0.3) !important;
       transition: opacity 0.35s ease-out, transform 0.35s ease-out !important;
     }
-
-    /* オープンワールド・カメラビューポート */
-    #viewport {
-      position: absolute;
-      inset: 0;
-      overflow: hidden;
-      touch-action: none;
-      user-select: none;
-      cursor: grab;
-    }
-    #viewport:active {
-      cursor: grabbing;
-    }
-    #world {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      transform-origin: 0 0;
-      will-change: transform;
-      overflow: visible;
-    }
-
-    /* スマホ画面向けのレスポンシブ最適化 */
-    @media (max-width: 600px) {
-      .hud-bar {
-        top: max(8px, env(safe-area-inset-top, 8px));
-        left: 10px;
-        right: 10px;
-        gap: 6px;
-      }
-      .hud-pill {
-        padding: 5px 10px;
-        font-size: 0.72rem;
-        gap: 5px;
-      }
-      .hud-pill strong {
-        font-size: 0.76rem;
-      }
-      .sub-desc {
-        display: none !important; /* スマホでは説明文を省いて1行でコンパクトに */
-      }
-      .hud-badge {
-        font-size: 0.65rem;
-        padding: 1px 6px;
-      }
-    }
   </style>
 </head>
 <body>
 
-  <div class="bg-particles" id="bg-stars"></div>
+  <div class="bg-particles"></div>
+  <div id="ambient-bubbles"></div>
+  <!-- 表面張力液膜レイヤー -->
+  <svg id="liquid-svg">
+    <defs>
+      <linearGradient id="bridge-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="rgba(255, 255, 255, 0.55)" />
+        <stop offset="50%" stop-color="rgba(147, 197, 253, 0.35)" />
+        <stop offset="100%" stop-color="rgba(192, 132, 252, 0.38)" />
+      </linearGradient>
+    </defs>
+  </svg>
+  <!-- 谷間を埋める小バブルコンテナ -->
+  <div id="gap-bubbles"></div>
+  <div id="space"></div>
 
-  <!-- オープンワールド ビューポート -->
-  <div id="viewport">
-    <div id="world">
-      <div id="ambient-bubbles"></div>
-      <!-- 表面張力液膜レイヤー -->
-      <svg id="liquid-svg">
-        <defs>
-          <linearGradient id="bridge-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="rgba(255, 255, 255, 0.55)" />
-            <stop offset="50%" stop-color="rgba(147, 197, 253, 0.35)" />
-            <stop offset="100%" stop-color="rgba(192, 132, 252, 0.38)" />
-          </linearGradient>
-        </defs>
-      </svg>
-      <!-- 谷間を埋める小バブルコンテナ -->
-      <div id="gap-bubbles"></div>
-      <div id="space"></div>
-    </div>
-  </div>
-
-  <!-- HUD（画面固定） -->
+  <!-- HUD -->
   <div class="hud-bar">
     <div class="hud-pill">
-      <strong>potalk Zero-G 🫧</strong>
-      <span class="sub-desc" id="hud-status-text">参加中：ポッポの森</span>
+      <strong>potalk Zero-G Mod 🫧</strong>
+      <span>参加中：ポッポの森 ／ 周辺に他の部屋が浮遊中</span>
     </div>
     <div class="hud-pill">
-      <span class="sub-desc">背景ドラッグで探索 / ピンチで伸縮 / </span>
-      <span class="hud-badge" id="hud-badge-text">3 部屋 稼働中</span>
+      <span>Active Rooms:</span>
+      <span class="hud-badge">3 部屋 稼働中 (参加 1 / 未参加 2)</span>
     </div>
   </div>
 
   <script>
-    const viewport = document.getElementById('viewport');
-    const world = document.getElementById('world');
     const space = document.getElementById('space');
-    const bgStars = document.getElementById('bg-stars');
     const ambientContainer = document.getElementById('ambient-bubbles');
 
-    // 背景に漂う装飾バブルを生成（ワールド空間全体に広がる星雲シャボン）
-    for (let k = 0; k < 35; k++) {
+    // 背景に漂う装飾バブルを生成
+    for (let k = 0; k < 22; k++) {
       const amb = document.createElement('div');
       amb.className = 'ambient-bubble';
-      const size = Math.random() * 36 + 10;
+      const size = Math.random() * 32 + 12;
       amb.style.width = `${size}px`;
       amb.style.height = `${size}px`;
-      amb.style.left = `${(Math.random() * 2200 - 500).toFixed(0)}px`;
-      amb.style.top = `${(Math.random() * 1800 - 400).toFixed(0)}px`;
+      amb.style.left = `${Math.random() * 95}vw`;
+      amb.style.top = `${Math.random() * 95}vh`;
       amb.style.opacity = (Math.random() * 0.35 + 0.12).toFixed(2);
       ambientContainer.appendChild(amb);
     }
 
-    // ワールド原点定義（メインルーム中心 = (520, 480)）
-    const WORLD_MAIN_CX = 520;
-    const WORLD_MAIN_CY = 480;
-
-    // メインルーム＋操作系クラスターの視覚重心（画面中心に持ってくる目標点）
-    const CLUSTER_CENTER_X = 585; // メイン中心よりやや右下
-    const CLUSTER_CENTER_Y = 545;
-    const CLUSTER_SPAN = 610;     // クラスターの横幅・縦幅の占有エリア
-
-    // 【オープンワールド・カメラシステム】
-    const camera = {
-      x: 0,
-      y: 0,
-      vx: 0,
-      vy: 0,
-      scale: 1,
-      targetScale: 1,
-      isPanning: false,
-      needsUpdate: true,
-      panStartX: 0,
-      panStartY: 0,
-      lastPanX: 0,
-      lastPanY: 0,
-      panHistory: [],
-      initialPinchDist: 0,
-      initialPinchScale: 1
-    };
-
-    // 画面サイズ・要素数に応じた最適スケールの自動計算
-    function calculateOptimalScale() {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      const availW = w - 24;
-      const availH = h - 70;
-      const scaleW = availW / CLUSTER_SPAN;
-      const scaleH = availH / CLUSTER_SPAN;
-      let optimal = Math.min(scaleW, scaleH);
-      // PCなど広い画面では 1.0 を上限、スマホでも 0.48 まで
-      optimal = Math.max(0.48, Math.min(1.0, optimal));
-      return optimal;
-    }
-
-    // カメラのセンタリング（初期表示およびリサイズ時）
-    function resetCameraToCenter(smooth = true) {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      const optScale = calculateOptimalScale();
-
-      const targetX = (w / 2) - CLUSTER_CENTER_X * optScale;
-      const targetY = (h / 2) - CLUSTER_CENTER_Y * optScale;
-      camera.needsUpdate = true;
-
-      if (!smooth) {
-        camera.scale = optScale;
-        camera.targetScale = optScale;
-        camera.x = targetX;
-        camera.y = targetY;
-        camera.vx = 0;
-        camera.vy = 0;
-      } else {
-        camera.targetScale = optScale;
-        camera.vx = (targetX - camera.x) * 0.1;
-        camera.vy = (targetY - camera.y) * 0.1;
-      }
-    }
-
-    // 初回カメラ設定（アニメーションなしで一瞬でフィット）
-    resetCameraToCenter(false);
+    // 画面中央から少し左上にオフセット（右下の操作系バブルとのバランス）
+    const cx = window.innerWidth / 2 - 60;
+    const cy = window.innerHeight / 2 - 25;
 
     // 【1. 参加中のメインルーム】大きく、存在感あるサイズ（460px）
     const mainRoom = {
@@ -700,8 +564,8 @@
       isJoined: true,
       label: 'ポッポの森 (Talk Room)',
       size: 460,
-      x: WORLD_MAIN_CX - 230,
-      y: WORLD_MAIN_CY - 230,
+      x: cx - 230,
+      y: cy - 230,
       vx: 0,
       vy: 0,
       children: [
@@ -716,15 +580,15 @@
 
     // 【2. 未参加の通話部屋 2部屋】少し小さく、周辺をゆったりふわふわ飛ぶ
     const otherRooms = [
-      // 未参加1: アイデア会議（左上付近、サイズ210px）
+      // 未参加1: アイデア会議（左上〜中央左をゆったり浮遊、サイズ210px）
       {
         id: 'room-idea',
         type: 'room',
         isJoined: false,
         label: 'アイデア会議',
         size: 210,
-        x: WORLD_MAIN_CX - 450,
-        y: WORLD_MAIN_CY - 280,
+        x: Math.max(30, cx - 440),
+        y: Math.max(60, cy - 220),
         vx: -0.22,
         vy: 0.14,
         children: [
@@ -733,15 +597,15 @@
           { id: 'u-9', avatar: '🐹', name: 'Hamster', size: 52, x: 80, y: 120, vx: 0.1, vy: 0.1 }
         ]
       },
-      // 未参加2: もくもく作業部屋（右上付近、サイズ190px）
+      // 未参加2: もくもく作業部屋（右上〜中央上をゆったり浮遊、サイズ190px）
       {
         id: 'room-mokumoku',
         type: 'room',
         isJoined: false,
         label: 'もくもく作業部屋 ☕',
         size: 190,
-        x: WORLD_MAIN_CX + 350,
-        y: WORLD_MAIN_CY - 260,
+        x: Math.min(window.innerWidth - 220, cx + 290),
+        y: Math.max(65, cy - 250),
         vx: 0.18,
         vy: -0.16,
         children: [
@@ -760,7 +624,7 @@
       };
     };
 
-    // 【3. 操作系バブル】「吸い寄せられてひっつく泡」二列・二段のハニカム吸着クラスター
+    // 【3. 操作系バブル】「吸い寄せられてひっつきそうな泡」二列・二段のハニカム吸着クラスター
     // メインルーム（R=230）の右下外壁に1段目がペタッと吸着し、その谷間に2段目がちゅるんと嵌まり込む
     const controlButtons = [
       // 1段目（メインルーム外壁にペタッと吸着: R=264px）
@@ -808,7 +672,7 @@
       g.radius = g.size / 2;
     });
 
-    // 表面張力の液膜ブリッジを描画するための事前プール（12本）
+    // 表面張力の液膜ブリッジを描画するための事前プール（10本）
     const liquidSvg = document.getElementById('liquid-svg');
     const bridgePaths = [];
     for (let k = 0; k < 12; k++) {
@@ -830,8 +694,8 @@
       type: 'personal',
       size: 290,
       radius: 145,
-      x: WORLD_MAIN_CX - 145,
-      y: WORLD_MAIN_CY - 145,
+      x: cx + 60 - 145,
+      y: cy + 25 - 145,
       vx: 0,
       vy: 0,
       active: false
@@ -983,7 +847,7 @@
       setupDrag(n);
     });
 
-    // 退出処理（メインルームを未参加化して縮小、マイバブルを視界中央に表示）
+    // 退出処理（メインルームを未参加化して縮小、マイバブルを表示）
     function leaveRoom() {
       if (!mainRoom.isJoined) return;
       mainRoom.isJoined = false;
@@ -994,12 +858,10 @@
       gapBubbles.forEach(g => g.el.classList.add('cluster-hidden'));
       bridgePaths.forEach(p => p.setAttribute('d', ''));
 
-      // マイバブルを表示して現在のカメラ視界中央に出現
+      // マイバブルを表示して中央に配置
       myBubbleNode.el.classList.remove('cluster-hidden');
-      const viewCenterX = (window.innerWidth / 2 - camera.x) / camera.scale;
-      const viewCenterY = (window.innerHeight / 2 - camera.y) / camera.scale;
-      myBubbleNode.x = viewCenterX - myBubbleNode.radius;
-      myBubbleNode.y = viewCenterY - myBubbleNode.radius;
+      myBubbleNode.x = window.innerWidth / 2 - myBubbleNode.radius;
+      myBubbleNode.y = window.innerHeight / 2 - myBubbleNode.radius;
       myBubbleNode.vx = 0;
       myBubbleNode.vy = 0;
 
@@ -1062,18 +924,12 @@
 
       // HUD更新
       updateHud(`参加中：${room.label} ／ 周辺に他の部屋が浮遊中`, '3 部屋 稼働中 (参加 1 / 未参加 2)');
-
-      // カメラを部屋の中心へスムーズに誘導
-      const targetX = (window.innerWidth / 2) - (room.x + room.radius + 45) * camera.scale;
-      const targetY = (window.innerHeight / 2) - (room.y + room.radius + 30) * camera.scale;
-      camera.vx = (targetX - camera.x) * 0.12;
-      camera.vy = (targetY - camera.y) * 0.12;
     }
 
     // HUDテキストの更新
     function updateHud(pillText, badgeText) {
-      const hudPill = document.getElementById('hud-status-text');
-      const hudBadge = document.getElementById('hud-badge-text');
+      const hudPill = document.querySelector('.hud-pill span');
+      const hudBadge = document.querySelector('.hud-badge');
       if (hudPill) hudPill.textContent = pillText;
       if (hudBadge) hudBadge.textContent = badgeText;
     }
@@ -1091,13 +947,13 @@
           p.style.top = `${originY - size / 2}px`;
           p.style.setProperty('--tx', `${(Math.random() - 0.5) * 140}px`);
           p.textContent = emoji;
-          space.appendChild(p);
+          document.body.appendChild(p);
           setTimeout(() => p.remove(), 2200);
         }, i * 70);
       }
     }
 
-    // バブル自体のドラッグ＆スロー処理（カメラの拡大縮小率を補正）
+    // ドラッグ＆スロー処理
     function setupDrag(n) {
       let isDragging = false;
       let startX, startY, lastX, lastY;
@@ -1114,9 +970,8 @@
 
       const onMove = (clientX, clientY) => {
         if (!isDragging) return;
-        // カメラの現在の scale で割って、画面上の移動量を正確なワールド座標移動量に変換
-        let dx = (clientX - lastX) / camera.scale;
-        let dy = (clientY - lastY) / camera.scale;
+        let dx = clientX - lastX;
+        let dy = clientY - lastY;
         if (Math.hypot(clientX - startX, clientY - startY) > 5) n.wasDragged = true;
 
         // 操作ボタンの場合、吸着点付近では表面張力の粘り抵抗（引き剥がす重み）
@@ -1150,224 +1005,51 @@
         }
       };
 
-      n.el.addEventListener('mousedown', (e) => {
-        if (e.target.tagName === 'INPUT') return;
-        e.stopPropagation();
-        onStart(e.clientX, e.clientY);
-      });
+      n.el.addEventListener('mousedown', (e) => onStart(e.clientX, e.clientY));
       window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
       window.addEventListener('mouseup', onEnd);
-
-      n.el.addEventListener('touchstart', (e) => {
-        if (e.target.tagName === 'INPUT') return;
-        e.stopPropagation();
-        onStart(e.touches[0].clientX, e.touches[0].clientY);
-      }, { passive: true });
-      window.addEventListener('touchmove', (e) => {
-        if (isDragging && e.touches.length > 0) {
-          onMove(e.touches[0].clientX, e.touches[0].clientY);
-        }
-      }, { passive: true });
+      n.el.addEventListener('touchstart', (e) => onStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+      window.addEventListener('touchmove', (e) => onMove(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
       window.addEventListener('touchend', onEnd);
-      window.addEventListener('touchcancel', onEnd);
     }
-
-    // 【オープンワールド操作イベント】背景ドラッグで自由パン ＆ ピンチ/ホイールでズーム
-    // 1. マウス操作
-    viewport.addEventListener('mousedown', (e) => {
-      if (e.target.closest('.bubble') || e.target.closest('.hud-bar')) return;
-      camera.isPanning = true;
-      camera.panStartX = e.clientX;
-      camera.panStartY = e.clientY;
-      camera.lastPanX = e.clientX;
-      camera.lastPanY = e.clientY;
-      camera.panHistory = [];
-      camera.vx = 0;
-      camera.vy = 0;
-    });
-
-    window.addEventListener('mousemove', (e) => {
-      if (!camera.isPanning) return;
-      const dx = e.clientX - camera.lastPanX;
-      const dy = e.clientY - camera.lastPanY;
-      camera.x += dx;
-      camera.y += dy;
-      camera.panHistory.push({ dx, dy, time: performance.now() });
-      if (camera.panHistory.length > 5) camera.panHistory.shift();
-      camera.lastPanX = e.clientX;
-      camera.lastPanY = e.clientY;
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (!camera.isPanning) return;
-      camera.isPanning = false;
-      if (camera.panHistory.length > 0) {
-        const avgDx = camera.panHistory.reduce((a, b) => a + b.dx, 0) / camera.panHistory.length;
-        const avgDy = camera.panHistory.reduce((a, b) => a + b.dy, 0) / camera.panHistory.length;
-        camera.vx = Math.max(-25, Math.min(25, avgDx * 0.85));
-        camera.vy = Math.max(-25, Math.min(25, avgDy * 0.85));
-      }
-    });
-
-    // マウスホイールズーム
-    viewport.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
-      const newScale = Math.max(0.42, Math.min(1.8, camera.targetScale * zoomFactor));
-
-      const mouseX = e.clientX;
-      const mouseY = e.clientY;
-      const worldX = (mouseX - camera.x) / camera.scale;
-      const worldY = (mouseY - camera.y) / camera.scale;
-
-      camera.targetScale = newScale;
-      camera.scale = newScale;
-      camera.x = mouseX - worldX * camera.scale;
-      camera.y = mouseY - worldY * camera.scale;
-    }, { passive: false });
-
-    // 2. スマホ・タッチ操作（1本指パン / 2本指ピンチズーム）
-    viewport.addEventListener('touchstart', (e) => {
-      if (e.target.closest('.bubble') || e.target.closest('.hud-bar')) return;
-
-      if (e.touches.length === 1) {
-        camera.isPanning = true;
-        camera.panStartX = e.touches[0].clientX;
-        camera.panStartY = e.touches[0].clientY;
-        camera.lastPanX = e.touches[0].clientX;
-        camera.lastPanY = e.touches[0].clientY;
-        camera.panHistory = [];
-        camera.vx = 0;
-        camera.vy = 0;
-      } else if (e.touches.length === 2) {
-        camera.isPanning = false;
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        camera.initialPinchDist = Math.hypot(dx, dy);
-        camera.initialPinchScale = camera.scale;
-      }
-    }, { passive: true });
-
-    viewport.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 1 && camera.isPanning) {
-        const dx = e.touches[0].clientX - camera.lastPanX;
-        const dy = e.touches[0].clientY - camera.lastPanY;
-        camera.x += dx;
-        camera.y += dy;
-        camera.panHistory.push({ dx, dy, time: performance.now() });
-        if (camera.panHistory.length > 5) camera.panHistory.shift();
-        camera.lastPanX = e.touches[0].clientX;
-        camera.lastPanY = e.touches[0].clientY;
-      } else if (e.touches.length === 2 && camera.initialPinchDist > 0) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const dist = Math.hypot(dx, dy);
-        const factor = dist / camera.initialPinchDist;
-        const newScale = Math.max(0.42, Math.min(1.8, camera.initialPinchScale * factor));
-
-        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        const worldX = (midX - camera.x) / camera.scale;
-        const worldY = (midY - camera.y) / camera.scale;
-
-        camera.scale = newScale;
-        camera.targetScale = newScale;
-        camera.x = midX - worldX * camera.scale;
-        camera.y = midY - worldY * camera.scale;
-      }
-    }, { passive: true });
-
-    viewport.addEventListener('touchend', (e) => {
-      if (e.touches.length === 0) {
-        if (camera.isPanning && camera.panHistory.length > 0) {
-          const avgDx = camera.panHistory.reduce((a, b) => a + b.dx, 0) / camera.panHistory.length;
-          const avgDy = camera.panHistory.reduce((a, b) => a + b.dy, 0) / camera.panHistory.length;
-          camera.vx = Math.max(-25, Math.min(25, avgDx * 0.85));
-          camera.vy = Math.max(-25, Math.min(25, avgDy * 0.85));
-        }
-        camera.isPanning = false;
-        camera.initialPinchDist = 0;
-      } else if (e.touches.length === 1) {
-        camera.initialPinchDist = 0;
-        camera.isPanning = true;
-        camera.lastPanX = e.touches[0].clientX;
-        camera.lastPanY = e.touches[0].clientY;
-        camera.panHistory = [];
-      }
-    });
-
-    viewport.addEventListener('touchcancel', () => {
-      camera.isPanning = false;
-      camera.initialPinchDist = 0;
-    });
-
-    window.addEventListener('resize', () => {
-      resetCameraToCenter(true);
-    });
 
     // 無重力物理・衝突・衛星浮遊ループ
     let time = 0;
     function animate() {
       time += 0.012;
-
-      // 0. カメラ慣性スクロールとスケールイージング（動いている時だけ親レイヤーを更新）
-      let cameraMoved = false;
-      if (!camera.isPanning) {
-        if (Math.abs(camera.vx) > 0.01 || Math.abs(camera.vy) > 0.01) {
-          camera.x += camera.vx;
-          camera.y += camera.vy;
-          camera.vx *= 0.92;
-          camera.vy *= 0.92;
-          cameraMoved = true;
-        } else {
-          camera.vx = 0;
-          camera.vy = 0;
-        }
-      } else {
-        cameraMoved = true;
-      }
-
-      if (Math.abs(camera.scale - camera.targetScale) > 0.0005) {
-        camera.scale += (camera.targetScale - camera.scale) * 0.12;
-        cameraMoved = true;
-      }
-
-      // カメラが動いたフレームのみ親レイヤーを更新（静止時の毎フレーム再合成ゼロ化！）
-      if (cameraMoved || camera.needsUpdate) {
-        world.style.transform = `translate3d(${camera.x.toFixed(2)}px, ${camera.y.toFixed(2)}px, 0) scale(${camera.scale.toFixed(4)})`;
-        if (bgStars) {
-          bgStars.style.transform = `translate3d(${(camera.x * 0.12).toFixed(1)}px, ${(camera.y * 0.12).toFixed(1)}px, 0)`;
-        }
-        camera.needsUpdate = false;
-      }
+      const width = window.innerWidth;
+      const height = window.innerHeight;
 
       // メインルームの中心座標
       const mainCenterX = mainRoom.x + mainRoom.radius;
       const mainCenterY = mainRoom.y + mainRoom.radius;
 
-      // 1. 各ノードの物理更新（ふわっふわな無重力浮遊 ＆ ぷるぷる表面張力）
+      // 1. 各ノードの物理更新
       allNodes.forEach((n, i) => {
         if (!n.isDragging) {
           if (n.type === 'room' && n.isJoined) {
-            // 参加中メインルーム：宇宙をゆったり大きく漂う（ふわふわ呼吸）
-            n.vx += Math.sin(time * 0.7) * 0.035;
-            n.vy += Math.cos(time * 0.5) * 0.030;
-            n.vx += (WORLD_MAIN_CX - mainCenterX) * 0.00015;
-            n.vy += (WORLD_MAIN_CY - mainCenterY) * 0.00015;
-            n.vx *= 0.978;
-            n.vy *= 0.978;
+            // 参加中メインルーム：中央付近でゆったり落ち着く穏やかな浮遊
+            n.vx += Math.sin(time * 0.8) * 0.005;
+            n.vy += Math.cos(time * 0.8) * 0.005;
+            // 画面中心へ戻る極めて緩やかな引力
+            n.vx += (cx - mainCenterX) * 0.0003;
+            n.vy += (cy - mainCenterY) * 0.0003;
+            n.vx *= 0.985;
+            n.vy *= 0.985;
 
           } else if (n.type === 'personal') {
-            // マイバブル（退出後）：その場付近でゆったり浮遊
+            // マイバブル（退出後）：画面中央でゆったり浮遊
             if (n.active) {
-              n.vx += Math.sin(time * 0.8) * 0.04;
-              n.vy += Math.cos(time * 0.6) * 0.04;
-              n.vx *= 0.978;
-              n.vy *= 0.978;
+              n.vx += Math.sin(time * 0.9) * 0.006;
+              n.vy += Math.cos(time * 0.9) * 0.006;
+              n.vx += (width / 2 - (n.x + n.radius)) * 0.0005;
+              n.vy += (height / 2 - (n.y + n.radius)) * 0.0005;
+              n.vx *= 0.985;
+              n.vy *= 0.985;
             }
 
           } else if (n.type === 'btn') {
-            // 操作系バブル：メインルームの動きに連動して「ぷるるんっ」とゼリーのように弾力追従
+            // 操作系バブル：通話中のみメインルーム右下へ表面張力で吸着
             if (mainRoom.isJoined) {
               const targetX = mainCenterX + n.orbitOffsetX - n.radius;
               const targetY = mainCenterY + n.orbitOffsetY - n.radius;
@@ -1375,37 +1057,35 @@
               const dy = targetY - n.y;
               const distToTarget = Math.hypot(dx, dy);
 
-              const tension = distToTarget < 80 ? 0.042 : 0.028;
+              const tension = distToTarget < 75 ? 0.065 : 0.038;
               n.vx += dx * tension;
               n.vy += dy * tension;
 
-              // 各ボタン独自のふわふわ微振動
-              n.vx += Math.sin(time * 2.2 + i * 1.3) * 0.055;
-              n.vy += Math.cos(time * 1.8 + i * 1.3) * 0.055;
+              n.vx += Math.sin(time * 2.8 + i) * 0.012;
+              n.vy += Math.cos(time * 2.8 + i) * 0.012;
 
-              n.vx *= 0.93; // しなやかな弾性
-              n.vy *= 0.93;
+              n.vx *= 0.88;
+              n.vy *= 0.88;
             }
 
           } else if (n.type === 'room' && !n.isJoined) {
-            // 未参加の部屋（ポッポの森含む）：広大な宇宙空間を大きくふわふわと巡回
-            n.vx += Math.sin(time * 0.5 + i * 2.1) * 0.04;
-            n.vy += Math.cos(time * 0.4 + i * 2.1) * 0.04;
-            n.vx *= 0.99;
-            n.vy *= 0.99;
+            // 未参加の部屋（ポッポの森含む）：広大な周辺を大きくふわふわと飛ぶ
+            n.vx += Math.sin(time * 0.6 + i * 2) * 0.012;
+            n.vy += Math.cos(time * 0.6 + i * 2) * 0.012;
+            n.vx *= 0.995;
+            n.vy *= 0.995;
           }
 
           n.x += n.vx;
           n.y += n.vy;
 
-          // ワールド広域境界とのバウンド（未参加部屋が無限の彼方に行き過ぎないように）
-          if (n.type === 'room' && !n.isJoined) {
-            const minX = -450, maxX = 1650;
-            const minY = -350, maxY = 1450;
-            if (n.x < minX) { n.x = minX; n.vx *= -0.7; }
-            if (n.x + n.size > maxX) { n.x = maxX - n.size; n.vx *= -0.7; }
-            if (n.y < minY) { n.y = minY; n.vy *= -0.7; }
-            if (n.y + n.size > maxY) { n.y = maxY - n.size; n.vy *= -0.7; }
+          // 画面外枠とのやわらかなバウンド（操作ボタン以外）
+          if (n.type === 'room' || n.type === 'personal') {
+            const margin = 20;
+            if (n.x < margin) { n.x = margin; n.vx *= -0.6; }
+            if (n.x + n.size > width - margin) { n.x = width - n.size - margin; n.vx *= -0.6; }
+            if (n.y < margin) { n.y = margin; n.vy *= -0.6; }
+            if (n.y + n.size > height - margin) { n.y = height - n.size - margin; n.vy *= -0.6; }
           }
         }
 
@@ -1457,14 +1137,13 @@
 
         // DOMへ位置とぷるぷるエフェクトを反映
         if (n.type === 'btn') {
-          const squish = Math.sin(time * 2.6 + i * 1.2) * 0.032;
-          const speedDeform = Math.max(-0.05, Math.min(0.05, n.vy * 0.012));
-          const scaleX = (1 + squish - speedDeform).toFixed(3);
-          const scaleY = (1 - squish + speedDeform).toFixed(3);
+          const squish = Math.sin(time * 3 + i) * 0.015;
+          const scaleX = (1 + squish - n.vy * 0.004).toFixed(3);
+          const scaleY = (1 - squish + n.vy * 0.004).toFixed(3);
           n.el.style.transform = `translate3d(${n.x.toFixed(1)}px, ${n.y.toFixed(1)}px, 0) scale(${scaleX}, ${scaleY})`;
         } else {
-          const breath = (n.type === 'room' || n.type === 'personal') ? (Math.sin(time * 1.1 + i * 1.5) * 0.022 + 1) : 1;
-          n.el.style.transform = `translate3d(${n.x.toFixed(1)}px, ${n.y.toFixed(1)}px, 0) scale(${breath.toFixed(3)})`;
+          const breath = (n.type === 'room' || n.type === 'personal') ? (Math.sin(time * 1.2 + i) * 0.008 + 1) : 1;
+          n.el.style.transform = `translate3d(${n.x.toFixed(1)}px, ${n.y.toFixed(1)}px, 0) scale(${breath})`;
         }
 
         // 2. ルーム内の子バブル物理（参加者）
@@ -1475,14 +1154,14 @@
             const childCy = c.y + c.radius;
             const toCenterX = n.radius - childCx;
             const toCenterY = n.radius - childCy;
-            c.vx += toCenterX * 0.0012;
-            c.vy += toCenterY * 0.0012;
+            c.vx += toCenterX * 0.0018;
+            c.vy += toCenterY * 0.0018;
 
-            c.vx += Math.sin(time * 1.8 + ci * 1.4) * 0.065;
-            c.vy += Math.cos(time * 1.5 + ci * 1.4) * 0.065;
+            c.vx += Math.sin(time * 2.5 + ci) * 0.015;
+            c.vy += Math.cos(time * 2.5 + ci) * 0.015;
 
-            c.vx *= 0.975;
-            c.vy *= 0.975;
+            c.vx *= 0.96;
+            c.vy *= 0.96;
             c.x += c.vx;
             c.y += c.vy;
 
@@ -1534,7 +1213,7 @@
         gapBubbles.forEach(g => {
           const targetX = mainCenterX + g.orbitOffsetX - g.radius;
           const targetY = mainCenterY + g.orbitOffsetY - g.radius;
-          const pulse = Math.sin(time * 2.8 + g.pulse) * 0.08 + 1;
+          const pulse = Math.sin(time * 3 + g.pulse) * 0.06 + 1;
           g.el.style.transform = `translate3d(${targetX.toFixed(1)}px, ${targetY.toFixed(1)}px, 0) scale(${pulse.toFixed(3)})`;
         });
       }
@@ -1590,19 +1269,17 @@
       const p2bX = x2 + r2 * Math.cos(angle + Math.PI + u2);
       const p2bY = y2 + r2 * Math.sin(angle + Math.PI + u2);
 
-      // くびれ制御点（接点の中点から中心に向かって自然にくびれさせる）
+      // くびれ制御点（中間点から法線方向に適度にくびれさせる）
       const midX = (x1 + x2) * 0.5;
       const midY = (y1 + y2) * 0.5;
-      const midA_X = (p1aX + p2aX) * 0.5;
-      const midA_Y = (p1aY + p2aY) * 0.5;
-      const midB_X = (p1bX + p2bX) * 0.5;
-      const midB_Y = (p1bY + p2bY) * 0.5;
+      const waist = Math.min(r1, r2) * 0.65 * spread;
+      const nx = -Math.sin(angle);
+      const ny = Math.cos(angle);
 
-      const pinch = (1 - spread) * 0.45;
-      const c1X = midA_X + (midX - midA_X) * pinch;
-      const c1Y = midA_Y + (midY - midA_Y) * pinch;
-      const c2X = midB_X + (midX - midB_X) * pinch;
-      const c2Y = midB_Y + (midY - midB_Y) * pinch;
+      const c1X = midX + nx * waist;
+      const c1Y = midY + ny * waist;
+      const c2X = midX - nx * waist;
+      const c2Y = midY - ny * waist;
 
       return `M ${p1aX.toFixed(1)} ${p1aY.toFixed(1)} Q ${c1X.toFixed(1)} ${c1Y.toFixed(1)} ${p2aX.toFixed(1)} ${p2aY.toFixed(1)} L ${p2bX.toFixed(1)} ${p2bY.toFixed(1)} Q ${c2X.toFixed(1)} ${c2Y.toFixed(1)} ${p1bX.toFixed(1)} ${p1bY.toFixed(1)} Z`;
     }
