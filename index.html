@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.18
+  ぽっと通話〈実験版〉 v0.15.19
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1386,7 +1386,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.18'
+const APP_VERSION = 'v0.15.19'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1482,6 +1482,7 @@ const CALL_INIT = () => ({
   reqOpen: false,       // 配信者：マイクのリクエストを受け付けているか（設定のスイッチ・v0.15.9）
   requests: new Set(),  // 配信者：マイクを希望している聞き役の peerId（挙手）。許可したら消す
   reqOpenSeen: false,   // 聞き役：配信者がいま受け付けているか（🙋 ボタンの出し入れ）
+  reqOpenEarly: null,   // 聞き役：配信者が誰か分かる前に届いた「募集中」{peerId, on}。名簿の検証が済んだら当てる（v0.15.19）
   myReq: false,         // 聞き役：自分が挙手しているか
   enterSent: false,     // 聞き役：入室通知をこのセッションで送ったか（1 回だけ・v0.15.11）
   ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📣 と 🎙 を描き分けるため）
@@ -4627,6 +4628,8 @@ const broadcastRoster = async (target = null) => {
   call.roster = roster
   sendTo(call.bcAction, roster, target)
   if (!target) setSpeakers(ids)
+  // 名簿と一緒に「募集中」も配り直す（30 秒ごと・v0.15.19）。上の取り置きが無い古い版の聞き役にも、遅くとも次の配り直しで届く
+  if (call.reqOpen) sendReqOpen(target)
 }
 // 新しく来た人へ、いま持っている名簿をそのまま渡す。**署名済みなので誰が転送してもよい**
 // ＝オーナーが去った後に入ってきた人も、残った人から受け取って検証できる。
@@ -4657,6 +4660,10 @@ const acceptRoster = async d => {
   call.rosterSeen = t; call.ownerPeer = own
   call.roster = { pk: pub, t, o: own, ids, sig }
   setSpeakers(ids)
+  if (call.reqOpenEarly) {   // 名簿より先に届いていた「募集中」を、配信者本人からのものなら当てる（v0.15.19）
+    const e = call.reqOpenEarly; call.reqOpenEarly = null
+    if (e.peerId === own) { call.reqOpenSeen = e.on; if (!e.on) call.myReq = false; renderSpeak() }
+  }
   ttsSync()   // 読み上げの案内が名簿より先に届いていたら、ここで評価する（{ok} を返す・仮想行を出す）
   // ★「枠主が誰か」が分かった**その瞬間**に、いまの募集と公開中のお便りを取りに行く。
   // 枠主からの push（mailSync）は**名簿より先に着くことがある**（名簿の送信は署名の計算を挟むので
@@ -5176,7 +5183,11 @@ const wireRoom = () => {
     if (!call.bcast || !d || typeof d !== 'object') return
     // リスナー側：枠主から「通話希望者募集」の状態が届いた（v0.15.9）。オーナー本人からのものだけ信じる。
     if (d.k === 'reqopen') {
-      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      // ★入った直後は名簿の検証（非同期・署名の確認）が済んでおらず、配信者が誰かまだ分からない。
+      //   配信者は onPeerJoin の瞬間に送ってくるので、ここで捨てると**後から入った人に 🙋 が出ない**
+      //   （v0.15.19 まで。募集をオンオフし直すと直っていたのはこのため）。取っておいて、名簿で確かめてから当てる
+      if (!call.ownerPeer) { call.reqOpenEarly = { peerId, on: !!d.on }; return }
+      if (peerId !== call.ownerPeer) return
       call.reqOpenSeen = !!d.on
       if (!call.reqOpenSeen) call.myReq = false   // 締め切られたら自分の希望も畳む
       renderSpeak()

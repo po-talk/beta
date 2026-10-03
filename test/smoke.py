@@ -1929,6 +1929,29 @@ def T27h(r, room):
     click_leave(l); click_leave(o)
 
 
+def T63(r, room):
+    """通話希望者募集（v0.15.19）：**募集をオンにしてから**入ってきた聞き役にも「通話希望」ボタンが出る
+
+    配信者は聞き役の onPeerJoin の瞬間に「募集中」を送るが、聞き役はまだ名簿の検証中で配信者が分からず、
+    v0.15.18 まではそれを捨てていた（オンオフし直すと出る、という利用者の報告）。入れ直さずに出ることを見る。
+    """
+    o = r.open_tab()
+    if not make_bcast(r, o, room + 'REQL') or not o.wait_for("location.hash.includes('~pk~')", timeout=DISCOVER):
+        r.check('T63', '後から入った聞き役にも募集が届く', False, 'pass', '配信部屋を作れなかった')
+        return
+    show_tab(o, 'settings')
+    o.wait_for("!document.getElementById('reqOpenRow').hidden", timeout=SHORT)
+    o.eval("document.getElementById('reqOpen').click()")
+    l = r.open_tab(hash_=o.eval('location.hash'))
+    l.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役（鍵を持たない）
+    click_join(l)
+    met = l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    raise_shown = l.wait_for("!document.getElementById('raise').hidden", timeout=15)   # 配り直し（30 秒）より前に出ること
+    r.check('T63', '募集オンのあとに入った聞き役にも、入れ直しなしで「通話希望」が出る', bool(met and raise_shown), 'pass',
+            '入室=%s / 15 秒以内に通話希望=%s' % (met, raise_shown))
+    click_leave(l); click_leave(o)
+
+
 def T27g(r, room):
     """配信者は、聞き役が突然消えても勝手にリロードしない（v0.15.4）
 
@@ -2822,6 +2845,8 @@ def main():
             T27g(r, room)
         if run('T27h'):
             T27h(r, room)
+        if run('T63'):
+            T63(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
