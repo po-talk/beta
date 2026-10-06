@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.21
+  ぽっと通話〈実験版〉 v0.15.22
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -716,6 +716,11 @@
   /* 「ほか N 人が聞いています」（v0.15.6）：一覧に出さない聞き役の数だけを名前なしで示す。人ではないので控えめに */
   /* position:relative は必須：隠れ聞き役の吹き出し（.chat-bubble・position:absolute）の基準になる（v0.15.8） */
   .m-more{ position:relative; padding:7px 12px; font-size:13px; color:var(--sub); border-radius:10px; background:var(--log) }
+  /* 「🔄 つながり中…」：まだつながっていない人。薄く出して、数には入れない（v0.15.22） */
+  .m-pending{ display:flex; align-items:center; gap:10px; padding:7px 12px; font-size:14px; color:var(--sub); opacity:.75 }
+  .m-pending .m-emoji{ filter:grayscale(.6) }
+  .m-pending .mp-name{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .m-pending .mp-state{ margin-left:auto; flex:none; font-size:12px }
   /* 仮想行の顔＝公式イラスト（img/tsukuyomi-128.png）。絵文字と同じ 1em の丸で置き、跳ね（transform）も人と揃う。
      規約上「自作アプリ内の顔グラフィック」は可・アプリアイコンやファビコンには使わない（THIRD_PARTY_NOTICES.md） */
   .m-emoji img.m-face{ width:1em; height:1em; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:-0.12em }
@@ -1383,10 +1388,11 @@ const livePcs = new Set()   // 生きている接続。Trystero は PC を見せ
 }
 window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 window.__potPcs = () => [...livePcs]   // 診断・テスト用
+window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.id.slice(0, 6)) } catch { return [] } }   // 診断・テスト用（「つながり中」の人）
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.21'
+const APP_VERSION = 'v0.15.22'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1464,6 +1470,9 @@ const CALL_INIT = () => ({
   lostAt: 0,            // 壊れた状態が続き始めた時刻（0＝壊れていない）
   audioWatch: null,     // 音声の到着を見張るタイマー（join で開始・leave で停止）
   peerSince: new Map(), // peerId → 接続を認識した時刻（音の到着を待ち始めた起点）
+  peerGone: new Map(),  // peerId → 部屋から抜けた時刻（ロビーの在室が残っていても「つながり中」に出さないため・v0.15.22）
+  pendingSig: '',       // 「つながり中」の人の並び（変わったときだけ描き直す）
+  pendingSince: new Map(),   // peerId → 在室はあるのにつながっていないと最初に気づいた時刻（3 秒続いたら出す）
   nudges: new Map(),    // peerId → {n: 送った回数, at: 最後に送った時刻}（頼む側）
   nudgeSeen: new Map(), // peerId → 最後に応じた時刻（頼まれる側。連打への自衛）
   warn: '',             // 直近のピア単位エラー（誰とも繋がっていない時だけ表示する）
@@ -2469,7 +2478,41 @@ const renderMembers = () => {
     more.textContent = '🙂 ほか ' + hiddenListeners + ' 人が聞いています'
     membersEl.appendChild(more)
   }
+  // 「🔄 つながり中…」（v0.15.22）：ロビーではこの部屋にいるのに、自分とはまだつながっていない人。
+  // **.member は付けない**＝人数（MEMBERS）にも満室判定にも数えない（まだ届いていない人なので）
+  pendingPeers().forEach(p => {
+    const row = document.createElement('div'); row.className = 'm-pending'; row.dataset.uid = 'pend:' + p.id
+    row.title = 'この人とはまだつながっていません。回線が混み合っていると 1 分ほどかかることがあります'
+    const e = document.createElement('span'); e.className = 'm-emoji'; e.textContent = p.emoji || '🙂'
+    const n = document.createElement('span'); n.className = 'mp-name'; n.textContent = p.name || 'ゲスト'
+    const st = document.createElement('span'); st.className = 'mp-state'; st.textContent = '🔄 つながり中…'
+    row.append(e, n, st)
+    membersEl.appendChild(row)
+  })
   renderBcNote()
+}
+// ロビーの在室では「この部屋にいる」のに、部屋の中ではまだつながっていない人（v0.15.22）。
+// ★ロビーの peerId と部屋の peerId は同じ（Trystero の selfId はページごとに 1 つ）＝在室の送り主と call.peers を突き合わせられる。
+//   新しい通信は足していない（ロビーの presence をそのまま使う）。
+// ・在室は 12 秒以内に届いたものだけ（抜けた人の在室は 30 秒残るので、新しいものに限る）
+// ・部屋から抜けた（onPeerLeave）人は 30 秒出さない（落ちた人が「つながり中」に化けないように）
+// ・配信部屋は名乗っている人（配信者・話す人）だけ。聞き役はもともと一覧に出さない
+// ・**3 秒続いたら出す**：ふつうに入ってくる人も、つながるまでの 1 秒ほどは同じ状態になる（毎回ちらつかせない）
+// ★未参加のうちは presences に触らない（モジュールの初期化中に呼ばれても TDZ で落ちないように）
+const pendingPeers = () => {
+  if (!call.joinedId) return []
+  const now = Date.now(), out = []
+  presences.forEach((v, id) => {
+    if (v.room !== call.joinedId || id === myPeerId || call.peers.has(id)) return
+    if (now - v.ts > 12000) return
+    if (now - (call.peerGone.get(id) || 0) < 30000) return
+    if (call.bcast && !v.bo && !v.name) return
+    if (!call.pendingSince.has(id)) call.pendingSince.set(id, now)
+    if (now - call.pendingSince.get(id) < 3000) return
+    out.push({ id, name: v.name, emoji: v.emoji })
+  })
+  call.pendingSince.forEach((t, id) => { if (call.peers.has(id) || !presences.has(id)) call.pendingSince.delete(id) })
+  return out
 }
 
 // アクティブスピーカー検出（VAD）：各ストリームの音量を測り、話している人の絵文字を跳ねさせる。
@@ -4160,6 +4203,9 @@ const checkAudioArrival = () => {
   // 何かの出来事を待っていると「つなぎ直す」の案内がいつまでも出ない（イベントが来ないため）。
   // 繋がった後は render がイベントで呼ばれるので、ここで回す必要はない。
   if (!call.peers.size) render()
+  // 「つながり中」の人が変わったら一覧を描き直す（つながった・在室が切れた・新しく見えた）
+  const sig = pendingPeers().map(p => p.id).join(',')
+  if (sig !== call.pendingSig) { call.pendingSig = sig; renderMembers() }
   const now = Date.now()
   const stuck = []
   let expect = 0        // 音が来るはずの相手の数（自動復帰の判定に使う）
@@ -5308,8 +5354,9 @@ const wireRoom = () => {
     flyReaction(peerId, data)
   }
 
-  call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id); ttsAnnounce(id); if (call.reqOpen) sendReqOpen(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
+  call.room.onPeerJoin = id => { call.peers.add(id); call.peerGone.delete(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id); ttsAnnounce(id); if (call.reqOpen) sendReqOpen(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
   call.room.onPeerLeave = id => {
+    call.peerGone.set(id, Date.now())   // 「つながり中」に出さない（在室がしばらく残るため）
     // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
     // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
     if (!call.byeSeen.has(id)) {
