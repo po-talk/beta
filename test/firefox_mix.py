@@ -27,6 +27,7 @@ a = ap.parse_args()
 
 FLOW = "[...document.querySelectorAll('audio:not(#appAudio)')].filter(x => x.srcObject && x.srcObject.getAudioTracks().some(t => t.readyState === 'live' && !t.muted)).length"
 MEM = "document.querySelectorAll('#members .member').length"
+PEND = "document.querySelectorAll('#members .m-pending').length"
 WARN = "(() => { const w = document.getElementById('audioWarn'); return w && !w.hidden ? w.textContent : '' })()"
 READY = "(() => { const j = document.getElementById('join'); return !!j && typeof j.onclick === 'function' && !j.disabled && !j.hidden })()"
 LEAVE = "(() => { const l = document.getElementById('leave'); if (l) l.click(); const y = document.getElementById('leaveYes'); if (y) y.click() })()"
@@ -91,14 +92,19 @@ def join_and_wait(x):
 
 def measure(newcomer, others, n_total, timeout=90):
     """newcomer が入ってから：newcomer が全員の声を受け取るまで／全員が newcomer の声を受け取るまで"""
-    t0 = time.time(); got_in = got_out = None
+    t0 = time.time(); got_in = got_out = None; pend = {}
     while time.time() - t0 < timeout and (got_in is None or got_out is None):
         el = round(time.time() - t0, 1)
+        for k, x in enumerate([newcomer] + others):   # 「🔄 つながり中…」が出ていた時間（どの画面で何秒目に）
+            try:
+                if x.eval(PEND): pend.setdefault(k, [el, el])[1] = el
+            except Exception: pass
         try:
             if got_in is None and newcomer.eval(FLOW) >= n_total - 1: got_in = el
             if got_out is None and all(o.eval(FLOW) >= n_total - 1 for o in others): got_out = el
         except Exception: pass
         time.sleep(0.5)
+    if pend: print('   🔄 つながり中（0=新しい人の画面）:', {k: '%.1f〜%.1fs' % tuple(v) for k, v in pend.items()})
     return got_in, got_out
 
 if a.netem:
