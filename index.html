@@ -1472,6 +1472,8 @@ const CALL_INIT = () => ({
   peerSince: new Map(), // peerId → 接続を認識した時刻（音の到着を待ち始めた起点）
   peerGone: new Map(),  // peerId → 部屋から抜けた時刻（ロビーの在室が残っていても「つながり中」に出さないため・v0.15.22）
   pendingSig: '',       // 「つながり中」の人の並び（変わったときだけ描き直す）
+  heard: new Map(),     // peerId → Map(相手がつながっている peerId → {name, emoji})（'peers' の又聞き・v0.15.22）
+  peersAction: null,
   pendingSince: new Map(),   // peerId → 在室はあるのにつながっていないと最初に気づいた時刻（3 秒続いたら出す）
   nudges: new Map(),    // peerId → {n: 送った回数, at: 最後に送った時刻}（頼む側）
   nudgeSeen: new Map(), // peerId → 最後に応じた時刻（頼まれる側。連打への自衛）
@@ -2501,17 +2503,28 @@ const renderMembers = () => {
 // ★未参加のうちは presences に触らない（モジュールの初期化中に呼ばれても TDZ で落ちないように）
 const pendingPeers = () => {
   if (!call.joinedId) return []
-  const now = Date.now(), out = []
-  presences.forEach((v, id) => {
-    if (v.room !== call.joinedId || id === myPeerId || call.peers.has(id)) return
-    if (now - v.ts > 12000) return
+  const now = Date.now(), seen = new Map()
+  const consider = (id, v) => {
+    if (seen.has(id) || id === myPeerId || call.peers.has(id)) return
     if (now - (call.peerGone.get(id) || 0) < 30000) return
+    seen.set(id, v)
+  }
+  presences.forEach((v, id) => {
+    if (v.room !== call.joinedId || now - v.ts > 12000) return
     if (call.bcast && !v.bo && !v.name) return
+    consider(id, v)
+  })
+  // ★又聞き（'peers'）。ロビーと部屋は同じ接続を使う（Trystero の shared-peer）ので、**2 人の間の接続そのものが
+  //   できないと、ロビーの在室も互いに届かない**＝在室だけでは肝心の場面で何も出ない（2026-10-06・Linux Firefox＋netem で実測）。
+  //   そこで、つながっている人が「自分は誰とつながっているか」を教え合う。送り主が抜けたら（onPeerLeave）その人の話は捨てる。
+  call.heard.forEach((m, from) => { if (call.peers.has(from)) m.forEach((v, id) => consider(id, v)) })
+  const out = []
+  seen.forEach((v, id) => {
     if (!call.pendingSince.has(id)) call.pendingSince.set(id, now)
     if (now - call.pendingSince.get(id) < 3000) return
     out.push({ id, name: v.name, emoji: v.emoji })
   })
-  call.pendingSince.forEach((t, id) => { if (call.peers.has(id) || !presences.has(id)) call.pendingSince.delete(id) })
+  call.pendingSince.forEach((t, id) => { if (!seen.has(id)) call.pendingSince.delete(id) })
   return out
 }
 
@@ -5105,6 +5118,8 @@ const wireRoom = () => {
       bgm: ['off', 'tune', 'amb', 'fire'].includes(data?.bgm) ? data.bgm : prev.bgm
     })
     maybeAdoptBgm()   // 新入りが「場の BGM」を初期値にもらう（源＝配信者／最古の人・v0.15.16）
+    // 名前・絵文字が分かった／変わった → 「つながっている人」の知らせも送り直す（入った瞬間はまだ名前が無い）
+    { const p = call.profiles.get(peerId); if (p.name !== prev.name || p.emoji !== prev.emoji) sendPeers() }
     // 後処理（全行の DOM 再構築＋満室判定）は発信者ごとに間引く。中身は上で必ず取り込んでいる
     throttleBy(call.profileSeen, peerId, PROFILE_ACCEPT_MS, call.profileFlush, () => {
       renderMembers()
@@ -5174,6 +5189,17 @@ const wireRoom = () => {
   // 古いクライアントは送ってこないので、その相手は常に「切れた」扱いになる＝**過剰に警告する側**へ倒す。
   call.byeAction = call.room.makeAction('bye')
   call.byeAction.onMessage = (_d, { peerId }) => call.byeSeen.add(peerId)
+
+  // 「自分は今この人たちとつながっている」の知らせ（v0.15.22・「🔄 つながり中…」の又聞き用）。{p: [[peerId, 名前, 絵文字], …]}
+  // つながっている顔ぶれが変わるたびに全員へ送る。配信部屋では送らない（聞き役の顔ぶれを広めない。在室だけで出す）。
+  // 古いクライアントは知らない action として捨てる＝送ってこない相手の分は出ないだけ
+  call.peersAction = call.room.makeAction('peers')
+  call.peersAction.onMessage = (d, { peerId }) => {
+    if (call.bcast || !d || !Array.isArray(d.p)) return
+    const m = new Map()
+    d.p.slice(0, 30).forEach(e => { if (Array.isArray(e) && typeof e[0] === 'string' && e[0].length <= 40) m.set(e[0], { name: capText(e[1], 20), emoji: capText(e[2] || '🙂', 8) }) })
+    call.heard.set(peerId, m)
+  }
 
   // 読み上げの案内（v0.14.44）。配信者→全員 {sid,on}／{now}、聞き役→配信者 {ok}。古いクライアントは知らない action として捨てる
   call.ttsAction = call.room.makeAction('tts')
@@ -5354,9 +5380,15 @@ const wireRoom = () => {
     flyReaction(peerId, data)
   }
 
-  call.room.onPeerJoin = id => { call.peers.add(id); call.peerGone.delete(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id); ttsAnnounce(id); if (call.reqOpen) sendReqOpen(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
+  // 顔ぶれが変わったら全員へ（入った直後の相手にも届く）。自分の分は含めない（受け取る側が自分で足している）
+  const sendPeers = () => {
+    if (call.bcast) return
+    sendTo(call.peersAction, { p: [...call.peers].map(id => { const p = call.profiles.get(id) || {}; return [id, p.name || '', p.emoji || ''] }) })
+  }
+  call.room.onPeerJoin = id => { call.peers.add(id); sendPeers(); call.peerGone.delete(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id); ttsAnnounce(id); if (call.reqOpen) sendReqOpen(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
   call.room.onPeerLeave = id => {
     call.peerGone.set(id, Date.now())   // 「つながり中」に出さない（在室がしばらく残るため）
+    call.heard.delete(id)
     // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
     // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
     if (!call.byeSeen.has(id)) {
@@ -5364,7 +5396,7 @@ const wireRoom = () => {
       showPeerNotice('🔌 ' + who + ' との接続が切れました（退出ではありません）')
       call.lostPeer = true        // 自動復帰の判定材料（普通の退出と区別する）
     }
-    call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id)
+    call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id); sendPeers()
     call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id); call.requests.delete(id)
     call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
     call.ttsSent.delete(id); call.ttsSentStream.delete(id); call.ttsResentAt.delete(id)   // 読み上げを配った記録（入り直せば別 ID＝改めて {ok} を待つ）
