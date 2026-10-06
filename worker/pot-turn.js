@@ -47,7 +47,7 @@
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || ''
-    const allowed = ['https://potalk.app', 'https://po-talk.github.io', 'https://qramo.github.io', 'http://localhost:8000']
+    const allowed = ['https://potalk.app', 'https://beta.potalk.app', 'https://po-talk.github.io', 'https://qramo.github.io', 'http://localhost:8000']
     const ok = allowed.includes(origin)
     const cors = {
       'Access-Control-Allow-Origin': ok ? origin : allowed[0],
