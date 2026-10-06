@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.20
+  ぽっと通話〈実験版〉 v0.15.21
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1386,7 +1386,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.20'
+const APP_VERSION = 'v0.15.21'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2059,8 +2059,13 @@ const mySeconds = () => call.joinedId ? Math.floor((performance.now() - call.joi
 // ★v0.15.20 で 6 秒／5 秒→2 秒／2.5 秒、見張りの間隔を 2 秒→1 秒に詰めた。4 人の部屋に 5 人目が入る計測（test/joinlag.py・
 //   8 回）で、相手は 0.5 秒で見つかるのに「全員の声」は毎回 8.6 秒＝**ほぼこの待ち**だった（8 回中 6 回で誰か 1 人の初回の
 //   音が届かず、送り直しで直っていた）。利用者から「入ってしばらく誰かの声だけ聞こえない」と報告があった件。
+// ★ただし短く見るのは**相手が入ってきた直後（AUDIO_FRESH_MS）だけ**。通話の途中は元の 5 秒（v0.15.21）。
+//   回線が細い人（利用者の報告：Linux の Firefox・回線が強くない）は途中の短い途切れが多く、2.5 秒で「止まった」と
+//   みなすと送り直しが頻発し、黄色の「音がまだ届いていません」も早く出る（細い回線にはやり直し自体が負担）。
 const AUDIO_WAIT_MS = 2000    // これだけ待って音が来なければ送り直しを頼む（相手の準備が遅いだけの場合を避ける）
-const AUDIO_MUTE_MS = 2500    // トラックは来たのに中身が来ない（track.muted）がこれだけ続いたら「届いていない」（audioFlowing）
+const AUDIO_MUTE_MS = 2500    // 入ってきた直後：トラックは来たのに中身が来ない（track.muted）がこれだけ続いたら「届いていない」
+const AUDIO_MUTE_MID_MS = 5000   // 通話の途中：同上（短い途切れには寛容に）
+const AUDIO_FRESH_MS = 15000  // 「入ってきた直後」とみなす長さ
 const NUDGE_EVERY_MS = 6000   // 頼む間隔
 const NUDGE_MAX = 3           // これだけ頼んで駄目なら諦めて本人に知らせる（接続自体が壊れている場合）
 // **応じる側の下限間隔**。頼む側は NUDGE_EVERY_MS で自制しているが、それは行儀のよいクライアントの
@@ -4118,7 +4123,8 @@ const audioFlowing = id => {
     const live = a.srcObject && a.srcObject.getAudioTracks().some(t => t.readyState === 'live' && !t.muted)
     if (live) { a.mutedSince = 0; return true }
     if (!a.mutedSince) a.mutedSince = now
-    return now - a.mutedSince < AUDIO_MUTE_MS
+    const fresh = now - (call.peerSince.get(id) || 0) < AUDIO_FRESH_MS
+    return now - a.mutedSince < (fresh ? AUDIO_MUTE_MS : AUDIO_MUTE_MID_MS)
   })
 }
 
