@@ -90,6 +90,15 @@ python3 -m http.server 8000
 | **Cloudflare Analytics トークン** | `<head>` のビーコンは作者のもの。自分のに差し替えるか、まるごと削除。 |
 | アイコン / `manifest.webmanifest` / フォローカード画像 | 好みで差し替え。 |
 
+### 例：見た目だけ変える（泡バージョン）
+クローンしてデザインを変えた例として、**泡バージョン「Bubble Zero-G」** があります。
+
+- デモ：[potalk.app/pop_demo/](https://potalk.app/pop_demo/)
+- ソース：[github.com/po-talk/pop_demo](https://github.com/po-talk/pop_demo)
+
+`index.html` をコピーして、**画面の部分だけ**を泡（重力と表面張力で漂う丸い UI）に差し替えています。通信の部分（部屋 ID・`appId`・データチャネルの中身）は元のままなので、**本家の画面の人と同じ部屋で話せます**。ロビーの一覧も共有します。
+通信の約束ごとは [docs/PROTOCOL.md](docs/PROTOCOL.md) にまとめています。本家の人と同じ部屋で話したいときは、ここに合わせてください（`appId` も変えない）。
+
 ### Cloudflare TURN（中継の既定・安定させたい人向け）
 本アプリは**既定で音声を必ず TURN 中継**に通します（`iceTransportPolicy:'relay'`）。狙いは **IP プライバシー**（中継なら相手に自分の実 IP が見えない。音声は中継でも DTLS-SRTP で暗号化されたままで、Cloudflare も中身は聞けない）。あわせて対称NAT・セルラーなど直 P2P が張れない環境の救済も兼ねます。無料の公開 TURN は不安定なので、**Cloudflare Realtime TURN ＋ 短命の資格情報を発行する小さな Worker**を推奨（Worker は "合鍵を渡すだけ" で通話は通らない＝運営は通信経路を持たない）。 **この Worker のソースは [`worker/pot-turn.js`](worker/pot-turn.js) に同梱しています**（シークレットは環境変数なので、そのまま自分の Cloudflare に貼って使えます）。
 
