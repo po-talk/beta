@@ -91,7 +91,7 @@ python3 -m http.server 8000
 | アイコン / `manifest.webmanifest` / フォローカード画像 | 好みで差し替え。 |
 
 ### 例：見た目だけ変える（泡バージョン）
-クローンしてデザインを変えた例として、**泡バージョン「Bubble Zero-G」** があります。
+クローンしてデザインを変えた例として、**泡バージョン「POP DEMO」** があります。
 
 - デモ：[potalk.app/pop_demo/](https://potalk.app/pop_demo/)
 - ソース：[github.com/po-talk/pop_demo](https://github.com/po-talk/pop_demo)
