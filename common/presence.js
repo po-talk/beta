@@ -3,6 +3,7 @@
 // サーバは介さない。読めないときは静的なリンクのまま（見た目は壊さない）。
 // ★本体 index.html の NOSTR_PUBLISH_MS（30 秒）と STALE_MS は対。片方だけ変えると「居るのに居ない」になる。
 // 使い方：<a class="pot" data-room="部屋名" href="…"> … <span class="state"></span> … </a> を置いて、このモジュールを読む。
+//   部屋 ID が名前と違う部屋（ハッシュ方式の常設部屋）は data-id="部屋ID" も付ける。在室は ID で引く（本体は call.joinedId を流す）
 const RELAYS = ['wss://relay.primal.net', 'wss://purplerelay.com', 'wss://bucket.coracle.social', 'wss://yabu.me/v2', 'wss://x.kojira.io', 'wss://relay.notoshi.win', 'wss://relay.mostr.pub']
 const KIND = 20001
 const STALE_MS = 90000   // これだけ新着が無ければ「その人は席を立った」
@@ -10,8 +11,9 @@ const GRACE_MS = 8000    // 接続直後、これだけ待って在室が無け�
 
 const pots = [...document.querySelectorAll('.pot[data-room]')]
 // ★リンクは data-room から機械的に組む（手で %-エンコードした href が、全角の「５」と半角の「5」を取り違えて
-//   別の部屋を作っていた。2026-09-21・やまびこ部屋）。固定の部屋は ID＝名前なので room と name に同じ値を入れる
-for (const el of pots) { const q = encodeURIComponent(el.dataset.room); el.href = '../#room=' + q + '&name=' + q }
+//   別の部屋を作っていた。2026-09-21・やまびこ部屋）。data-id が無い固定の部屋は ID＝名前なので room と name に同じ値を入れる
+const idOf = el => el.dataset.id || el.dataset.room
+for (const el of pots) el.href = '../#room=' + encodeURIComponent(idOf(el)) + '&name=' + encodeURIComponent(el.dataset.room)
 if (pots.length) {
   const hash = async name => {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('potto:' + name))
@@ -40,7 +42,7 @@ if (pots.length) {
   }
   try {
     const ntP = import('https://esm.sh/nostr-tools@2.10.4')
-    for (const el of pots) rooms.set(await hash(el.dataset.room), { el, seen: new Map(), checked: false })
+    for (const el of pots) rooms.set(await hash(idOf(el)), { el, seen: new Map(), checked: false })
     render(); window.__presenceRooms = [...rooms.keys()]
     const nt = await ntP
     const pool = new nt.SimplePool()
