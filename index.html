@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.22
+  ぽっと通話〈実験版〉 v0.15.23
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1392,7 +1392,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.22'
+const APP_VERSION = 'v0.15.23'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1811,10 +1811,13 @@ const roomInput = $('room')
 // 部屋を開ける＝古いハッシュだけのリンクでは復活しない）。`~`, `-`, `_` は encodeURIComponent で変換されない。
 const roomUrl = (id, name) => location.origin + location.pathname + '#room=' + id + (name ? '&name=' + encodeURIComponent(name) : '')
 // URL の読み取り。新形式 `#room=ID&name=名前`／旧形式 `#名前`（入口URL）。壊れたエンコードは空扱い（起動を止めない）
+// 常設の部屋（案内役・やまびこ）は 2026-10-08 に ID＝名前からハッシュ方式へ移った。古いリンク（/start/ の旧版・
+// ブックマーク）の `#room=旧名` を新しい ID に読み替える。potalk-greeter の ROOM_ID と対（変えるなら両方）
+const MOVED_ROOMS = { 'ぽっと通話にようこそ': 'X7fZgwbqs8CqUF8T', 'やまびこ部屋⛰️（5秒で返信）': 'U7PU1_IarAwtqnBf' }
 const parseHash = () => {
   const raw = location.hash.slice(1)
   if (raw.startsWith('room=')) {
-    try { const q = new URLSearchParams(raw); return { room: q.get('room') || '', name: capRoom(q.get('name') || ''), legacy: '' } }
+    try { const q = new URLSearchParams(raw), r = q.get('room') || ''; return { room: MOVED_ROOMS[r] || r, name: capRoom(q.get('name') || ''), legacy: '' } }
     catch { return { room: '', name: '', legacy: '' } }
   }
   try { return { room: '', name: '', legacy: decodeURIComponent(raw) } } catch { return { room: '', name: '', legacy: '' } }
