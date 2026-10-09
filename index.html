@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.24
+  ぽっと通話〈実験版〉 v0.15.25
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1405,7 +1405,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.24'
+const APP_VERSION = 'v0.15.25'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1452,7 +1452,8 @@ const CALL_INIT = () => ({
   peers: new Set(),     // 接続できている相手の peerId
   audios: new Map(),    // peerId → audio要素[]（相手の退出時に個別破棄する）。読み上げの仮想行は 'tts'
   ttsAction: null,      // 読み上げの案内（配信者→全員：{sid,on}／{now}。聞き役→配信者：{ok}）
-  ttsAnn: null,         // 受け取った最新の案内 {from, sid, on}。配信者からのものかは ttsSidOf() が名簿で確かめる
+  ttsAnn: null,         // 受け取った最新の案内 {from, sid, on}。**配信者からのものだけ**入る（v0.15.25）
+  ttsAnnEarly: null,    // 聞き役：配信者が誰か分かる前に届いた案内 Map(peerId → {from, sid, on})。名簿の検証が済んだら配信者の分だけ当てる
   ttsAckedFrom: '',     // {ok} を返した相手（配信者の peerId）。配信者が入り直せば別 ID になるので返し直す
   ttsSent: new Set(),   // 配信者：読み上げのストリームを渡した相手（{ok} を返してきた人だけ）
   ttsSentStream: new Map(), // 配信者：相手ごとに渡した MediaStream（送り直しは新しい包みになるので、相手ごとに sid が違う）
@@ -1809,11 +1810,11 @@ let pendingPk = ''
 // 退出しても消さない＝同じ名前で入り直せば同じ部屋（T6「入り直せる」）。名前を打ち替えたら新しくする。
 let pendingHash = ''
 let boundRoomName = ''   // pendingHash が紐づいている部屋名。名前を打ち替えたら別の部屋にする
-// 入口の確認（リンクで来た人）。中身は下の「入口の確認」の節。state: '' | 'checking' | 'live' | 'asleep'
+// 入口の確認（リンクで来た人）。中身は下の「入口の確認」の節。state: '' | 'checking' | 'live' | 'choose' | 'asleep'
 // ★entryIsBlocking は**ここで**宣言する。つなぎ直し（rejoin）はモジュール評価の途中で joinCall() を
 //   呼ぶので、下の節で const 宣言すると TDZ の ReferenceError になり、参加が黙って失敗する（T11 が捕まえた）
 const entry = { id: '', name: '', pk: '', state: '' }   // id＝新形式の URL／name+pk＝旧形式（入口URL）
-const entryIsBlocking = () => entry.state === 'checking' || entry.state === 'asleep'
+const entryIsBlocking = () => entry.state === 'checking' || entry.state === 'asleep' || entry.state === 'choose'
 const roomInput = $('room')
 // 文字数カウンタ。絵文字を1文字と数えるためコードポイント単位で数える（capRoom と同じ数え方）。
 // value への代入では input イベントが飛ばないので、値を書き換えた箇所では必ずこれを呼ぶこと。
@@ -2899,7 +2900,7 @@ const bgmBrown = (ctx, sec) => {
 // 🔥 焚き火（v0.14.61・利用者が耳で決めた値）：呼吸のゆらぎ（bgmCurlNoise）の上に 5 つの層。
 //   1 炎本体（240Hz 以下の低域＋10Hz 以下のフリッカー）　2 炭のチリチリ（1.8kHz・断続）　3 ねっとり（ブラウン雑音の共鳴 320Hz・
 //   燃え上がるときだけ膨らむ）　4 はためき（白色の 750Hz 帯・14Hz で不規則に揺れ、呼吸で強く）　5 パリッ（2.8kHz の乾いた弾け・たまに固まる）
-//   ＋ 従来の火の粉と薪の爆ぜ。値は tools/fire_lab.html で決め、連続層は前の版と実効音量が揃うよう 2.5 倍している
+//   ＋ 従来の火の粉と薪の爆ぜ。値は実験ページ fire_lab.html（非公開の internal/lab/tools/）で決め、連続層は前の版と実効音量が揃うよう 2.5 倍している
 //   （オフライン描画で実測：旧 0.031 → 新 0.032。弾ける音の大きさは据え置き）。「メラメラの伝え方は難しい」＝いつか詰め直す（HANDOFF）
 const FIRE = {
   body: 0.10, flick: 5.3,                       // 1
@@ -3136,7 +3137,7 @@ let waking = null, wakeAt = 0, bgmRestartAt = 0
 // 止められた <audio> を play し直す（v0.15.1）。iOS は動画などに音声セッションを取られると、
 // **ctx を 'interrupted' にすると同時に <audio> 要素も pause する**。resume は元から効いていたが、
 // 要素が止まったままなので無音が続き、利用者は「つなぎ直す」を押すしかなかった
-// （2026-09-29 実測・tools/audio_wake_test.html：① resume のみ→戻らない ② resume＋play→戻る。
+// （2026-09-29 実測・audio_wake_test.html〔非公開の internal/lab/tools/〕：① resume のみ→戻らない ② resume＋play→戻る。
 // ③ srcObject の付け直しは再生位置が飛んで「プチッ」となるので使わない）。
 // 無視した相手の要素は ignorePeer が dropAudios で**捨てて**いる＝paused な要素を鳴らし直しても無視は破れない。
 // play の拒否は play ヘルパが解錠ボタンに落とす（勝手に鳴らせない環境を壊さない）。
@@ -4748,6 +4749,10 @@ const acceptRoster = async d => {
     const e = call.reqOpenEarly; call.reqOpenEarly = null
     if (e.peerId === own) { call.reqOpenSeen = e.on; if (!e.on) call.myReq = false; renderSpeak() }
   }
+  if (call.ttsAnnEarly) {    // 名簿より先に届いていた読み上げの案内を、配信者本人のものだけ当てる（v0.15.25）
+    const e = call.ttsAnnEarly.get(own)
+    if (e) { call.ttsAnn = e; call.ttsAnnEarly.delete(own) }
+  }
   ttsSync()   // 読み上げの案内が名簿より先に届いていたら、ここで評価する（{ok} を返す・仮想行を出す）
   // ★「枠主が誰か」が分かった**その瞬間**に、いまの募集と公開中のお便りを取りに行く。
   // 枠主からの push（mailSync）は**名簿より先に着くことがある**（名簿の送信は署名の計算を挟むので
@@ -5241,7 +5246,14 @@ const wireRoom = () => {
       return
     }
     // 案内 {sid,on} は**状態**なので捨てない（{now:null} の直後に {on:false} が来る＝連打よけに掛けると消し損ねる・T55 で踏んだ）
-    call.ttsAnn = { from: peerId, sid: typeof d.sid === 'string' ? d.sid.slice(0, 64) : '', on: !!d.on }
+    // ★配信者からのものだけ受け取る（v0.15.25）。v0.15.24 までは誰からでも上書きでき、聞き役が {on:false} を送ると
+    //   ほかの聞き役が読み上げを要求しなくなる／配信者の声の再生が読み上げに差し替わる、が起きた（10-09 のセキュリティ監査）。
+    //   配信者が誰か分かる前に届いたものは送り主ごとに取っておき、名簿の検証で配信者が決まったら本人の分だけ当てる（reqOpenEarly と同じ）
+    //   ★配信者と一致しない送り主のものも捨てずに取っておく：配信者がつなぎ直すと peerId が変わり、新しい名簿より先に
+    //   新しい配信者の案内が届く（T55b で踏んだ）。送り主ごとに 1 件だけ（上書き）なので、偽の送り主が何を送っても当たらない
+    const ann = { from: peerId, sid: typeof d.sid === 'string' ? d.sid.slice(0, 64) : '', on: !!d.on }
+    if (peerId !== call.ownerPeer) { (call.ttsAnnEarly ||= new Map()).set(peerId, ann); return }
+    call.ttsAnn = ann
     ttsSync()
   }
 
@@ -5404,6 +5416,7 @@ const wireRoom = () => {
   call.room.onPeerJoin = id => { call.peers.add(id); sendPeers(); call.peerGone.delete(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id); ttsAnnounce(id); if (call.reqOpen) sendReqOpen(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
   call.room.onPeerLeave = id => {
     call.peerGone.set(id, Date.now())   // 「つながり中」に出さない（在室がしばらく残るため）
+    call.ttsAnnEarly?.delete(id)        // 取っておいた読み上げの案内も捨てる（v0.15.25）
     call.heard.delete(id)
     // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
     // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
@@ -5547,7 +5560,10 @@ const armJoined = (roomId, name, bcast) => {
 }
 
 const runJoin = async () => {
-  const muteOnJoin = joinMuted; joinMuted = false   // 失敗しても次の参加に持ち越さないよう、先に消費する
+  // 古い入口リンク（#部屋名）から開いている部屋に入るときも、ミュートで始める（一覧から入るのと同じ・v0.15.25）。
+  // 古いリンクは「いま招かれた」ものではない＝誰かの会話に入っていく。新しい共有リンク（#room=ID）は招かれた人なので従来どおり
+  // ★entryActive() ではなく entry を直接見る：つなぎ直しはモジュール評価の途中でここに来るので、後で宣言される関数は TDZ
+  const muteOnJoin = joinMuted || (!!entry.name && entry.state === 'live'); joinMuted = false   // 失敗しても次の参加に持ち越さないよう、先に消費する
   // 空欄のときは名前から作る。名前も無ければ促して中止。
   const target = joinTarget()
   if (!target) return
@@ -6081,25 +6097,34 @@ const entryCancel = () => {
 const entryMatch = v => (entry.id ? v.room === entry.id : (roomPk(v.room) === entry.pk && (v.rn || roomBase(v.room)) === entry.name))
   && (!isBcRoom(v.room) || v.bo)   // 配信部屋は配信者がいるときだけ「開いている」
 const entryLiveCount = () => { let n = 0; presences.forEach(v => { if (entryMatch(v)) n++ }); return n }
-// 開いていると分かったら、その部屋（同名が複数なら人の多いほう）へ入る準備＝ハッシュと指紋を持つ
+// 開いていると分かったら、その部屋へ入る準備＝ハッシュと指紋を持つ。**合う部屋がちょうど 1 つのときだけ**（v0.15.25）。
+// ★v0.15.24 までは「同名が複数なら在室の多いほう」を自動で選んでいた。在室は自己申告で、ロビーにつなぐだけで
+//   何行でも出せるので、偽の在室を本物より多く出すと、古い入口リンク（#部屋名）の人を別の部屋へ誘導できた
+//   （10-09 のセキュリティ監査）。複数あるときは選ばず、ロビーの一覧から本人に選んでもらう（'choose'）
 const entryAdopt = () => {
-  const count = new Map()
-  presences.forEach(v => { if (entryMatch(v)) count.set(v.room, (count.get(v.room) || 0) + 1) })
-  const best = [...count.entries()].sort((a, b) => b[1] - a[1])[0]
-  if (!best) return
-  const room = best[0]
+  const rooms = new Set()
+  presences.forEach(v => { if (entryMatch(v)) rooms.add(v.room) })
+  if (rooms.size !== 1) { if (!entry.id) pendingHash = ''; return false }
+  const room = [...rooms][0]
   pendingHash = roomBase(room); pendingPk = roomPk(room)
   if (!roomInput.value.trim()) { let nm = ''; presences.forEach(v => { if (v.room === room && v.rn) nm = v.rn }); roomInput.value = nm || roomLabel(room); syncRoomCount() }
   boundRoomName = roomInput.value.trim()
   syncShare()
+  return true
 }
+// 同じ名前で開いている部屋の数（'choose' の案内用）
+const entryRoomCount = () => { const r = new Set(); presences.forEach(v => { if (entryMatch(v)) r.add(v.room) }); return r.size }
 const entryRender = () => {
   const j = $('join'), note = $('entryNote'), acts = $('entryActions')
   j.disabled = entry.state === 'checking'
-  j.hidden = entry.state === 'asleep'
-  note.hidden = entry.state !== 'asleep' && entry.state !== 'live'
-  acts.hidden = entry.state !== 'asleep'
+  j.hidden = entry.state === 'asleep' || entry.state === 'choose'
+  note.hidden = entry.state !== 'asleep' && entry.state !== 'live' && entry.state !== 'choose'
+  acts.hidden = entry.state !== 'asleep' && entry.state !== 'choose'
   if (entry.state === 'live') $('entryText').textContent = '🟢 いま開いています（' + entryLiveCount() + '人）'
+  if (entry.state === 'choose') {
+    $('entryText').textContent = '🔀 同じ名前の部屋が ' + entryRoomCount() + ' つ開いています。下の「通話中の部屋」から選んでください。'
+    $('entryOpen').hidden = !!entry.pk   // 聞き役は配信部屋を開けない（鍵が無い）
+  }
   if (entry.state === 'asleep') {
     const bc = !!(entry.pk || roomPk(entry.id))
     const noName = !!entry.id && !roomInput.value.trim()   // ハッシュだけの URL＝名前を持って来ていない
@@ -6114,10 +6139,11 @@ const entryRender = () => {
 const entryUpdate = () => {
   if (!entryActive()) return
   const n = entryLiveCount()
-  const next = n ? 'live' : (lobbySince && Date.now() - lobbySince >= ENTRY_WAIT ? 'asleep' : 'checking')
-  if (next === 'live') entryAdopt()
+  let next = n ? 'live' : (lobbySince && Date.now() - lobbySince >= ENTRY_WAIT ? 'asleep' : 'checking')
+  if (next === 'live' && !entryAdopt()) next = 'choose'
   if (next !== entry.state) { entry.state = next; entryRender() }
   else if (next === 'live') $('entryText').textContent = '🟢 いま開いています（' + n + '人）'
+  else if (next === 'choose') entryRender()   // 部屋の数が変わったときに案内を直す
 }
 const entryStart = () => {
   const q = parseHash()
