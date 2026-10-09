@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.25
+  ぽっと通話〈実験版〉 v0.15.26
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1043,6 +1043,9 @@
     <div id="entryActions" class="entry-actions" hidden>
       <!-- 文言は利用者の指定（2026-09-18）。ロビーはすぐ下にあるので「ロビーで」とは言わない。
            「名前をつけて参加」＝参加ボタンを戻して部屋名の欄にフォーカス（名前を見直してから押す） -->
+      <!-- 「このまま入ってみる」（v0.15.26）：リンクの部屋（同じ ID）にそのまま入る。ロビーでの発見が遅れただけで、
+           実は開いている部屋に入れない、を防ぐ（10-06 の計測）。ID の無い古いリンク（#部屋名）には出さない -->
+      <button id="entryTry" type="button" hidden>🚪 このまま入ってみる</button>
       <button id="entryLobby" type="button">☎️ 通話中の部屋から選んで参加</button>
       <button id="entryOpen" type="button">✏️ 部屋の名前をつけて参加</button>
     </div>
@@ -1405,7 +1408,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.25'
+const APP_VERSION = 'v0.15.26'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -6121,6 +6124,7 @@ const entryRender = () => {
   note.hidden = entry.state !== 'asleep' && entry.state !== 'live' && entry.state !== 'choose'
   acts.hidden = entry.state !== 'asleep' && entry.state !== 'choose'
   if (entry.state === 'live') $('entryText').textContent = '🟢 いま開いています（' + entryLiveCount() + '人）'
+  $('entryTry').hidden = !(entry.state === 'asleep' && entry.id)   // 入る先（ID）が決まっているリンクだけ
   if (entry.state === 'choose') {
     $('entryText').textContent = '🔀 同じ名前の部屋が ' + entryRoomCount() + ' つ開いています。下の「通話中の部屋」から選んでください。'
     $('entryOpen').hidden = !!entry.pk   // 聞き役は配信部屋を開けない（鍵が無い）
@@ -6128,10 +6132,11 @@ const entryRender = () => {
   if (entry.state === 'asleep') {
     const bc = !!(entry.pk || roomPk(entry.id))
     const noName = !!entry.id && !roomInput.value.trim()   // ハッシュだけの URL＝名前を持って来ていない
-    $('entryText').textContent = bc
+    $('entryText').textContent = (bc
       ? '😴 この配信はいま開いていないみたいです。始まればここに出ます。'
       : noName ? '😴 この部屋は終わったみたいです。'
-      : '😴 この部屋にはいま誰もいないみたいです。古いリンクかもしれません。'
+      : '😴 この部屋にはいま誰もいないみたいです。古いリンクかもしれません。')
+      + (entry.id ? '（見つけるのに時間がかかっているだけのこともあります）' : '')
     $('entryOpen').hidden = bc   // 聞き役は配信部屋を開けない（鍵が無い）
   }
   syncKindRow()   // ボタンの文言
@@ -6161,6 +6166,15 @@ const entryStart = () => {
   entry.state = 'checking'; entryRender()
   if (entryTimer) clearInterval(entryTimer)
   entryTimer = setInterval(entryUpdate, 1000)
+}
+// 「このまま入ってみる」：入口の確認をやめて、リンクの部屋（pendingHash＝リンクの ID のまま）に参加する。
+// 参加ボタンを押したのと同じ道を通す（iOS の音声の解錠など、ユーザー操作の中でしかできない処理があるため）
+$('entryTry').onclick = () => {
+  if (!entry.id) return
+  if (entryTimer) { clearInterval(entryTimer); entryTimer = null }
+  entry.id = ''; entry.name = ''; entry.pk = ''; entry.state = ''
+  entryRender()
+  $('join').click()
 }
 $('entryLobby').onclick = () => { const l = document.querySelector('.lobby'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 // 「部屋の名前をつけて参加」＝すぐには入らない。参加ボタンを戻し、部屋名の欄を選択状態にして
