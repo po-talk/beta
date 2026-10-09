@@ -1489,7 +1489,7 @@ def T42(r, room):
     # ★スピーカーへ直接繋いでいないこと（繋ぐと二重に鳴る／iPhone で音が細る）
     direct = t.eval('__T.edges.some(([x, y]) => y instanceof AudioDestinationNode)')
     # ★中断からの復帰（v0.15.1）：iOS は割り込みで **ctx だけでなく <audio> 要素も pause する**ので、
-    #   復帰時に要素を play し直す（resume だけでは戻らない＝2026-09-29 の実測・tools/audio_wake_test.html）。
+    #   復帰時に要素を play し直す（resume だけでは戻らない＝2026-09-29 の実測・internal/lab/tools/audio_wake_test.html）。
     #   ヘッドレスでは中断そのものを再現できないので、「要素を止めてから復帰イベントを起こすと鳴り直る」を固定する。
     t.eval("(() => { const a = document.getElementById('appAudio'); a.pause();"
            " document.dispatchEvent(new Event('visibilitychange')) })()")
@@ -1968,6 +1968,40 @@ def T66(r, room):
     gone = c.wait_for('!%s.includes(%s)' % (LOBBY, js_str(room + 'CL')), timeout=20)
     dt = time.time() - t0
     r.check('T66', 'タブを閉じた人の部屋が数秒で一覧から消える', bool(gone) and dt < 10, 'pass', '消えるまで %.1f 秒' % dt)
+
+
+def T68(r, room):
+    """古い入口リンク（#部屋名）は、同じ名前の部屋が複数開いていたら自動で選ばない（v0.15.25）
+
+    v0.15.24 までは「在室の多いほう」を自動で選んでいた。在室は自己申告なので、偽の在室を本物より多く出すと
+    別の部屋へ誘導できた（10-09 のセキュリティ監査）。いまは：
+    ①同じ名前で 2 部屋開いている → 「選んでください」の案内（参加ボタンは出ない＝黙って新しい部屋を作らない）
+    ②片方が閉じて 1 部屋になる → 「開いています」になり、参加するとその部屋に**ミュートで**入る
+    """
+    name = room + 'TWIN'
+    def make(t):
+        t.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+        t.eval("(() => { const i = document.getElementById('room'); i.value = %s; i.dispatchEvent(new Event('input')) })()" % js_str(name))
+        click_join(t)
+        return t.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    a, b = r.open_tab(), r.open_tab()
+    made = make(a) and make(b)
+    room_a = a.eval("new URLSearchParams(location.hash.slice(1)).get('room')")
+    c = r.open_tab(hash_='#' + urllib.parse.quote(name))
+    c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    choose = c.wait_for("document.getElementById('entryText').textContent.includes('同じ名前の部屋が 2 つ')", timeout=DISCOVER)
+    join_hidden = c.eval("document.getElementById('join').hidden && !document.getElementById('join').offsetParent")
+    click_leave(b)
+    live = c.wait_for("document.getElementById('entryText').textContent.includes('開いています') && !document.getElementById('join').hidden && !document.getElementById('join').disabled", timeout=DISCOVER)
+    click_join(c)
+    joined = c.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    same = c.eval("new URLSearchParams(location.hash.slice(1)).get('room')") == room_a
+    muted = c.eval("document.getElementById('mute').classList.contains('muted')")
+    ok = bool(made and choose and join_hidden and live and joined and same and muted)
+    r.check('T68', '古い入口リンクは、同名の部屋が複数なら自動で選ばない／1 部屋ならミュートで入る', ok, 'pass',
+            '2 部屋を作れた=%s / 選んでくださいの案内=%s / 参加ボタンは隠れる=%s / 1 部屋になると開いています=%s / 参加=%s / 残った部屋=%s / ミュート=%s'
+            % (made, choose, join_hidden, live, joined, same, muted))
+    click_leave(a); click_leave(c)
 
 
 def T27g(r, room):
@@ -2867,6 +2901,8 @@ def main():
             T63(r, room)
         if run('T66'):
             T66(r, room)
+        if run('T68'):
+            T68(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
