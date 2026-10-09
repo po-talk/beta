@@ -4,7 +4,7 @@
 // ★本体 index.html の NOSTR_PUBLISH_MS（30 秒）と STALE_MS は対。片方だけ変えると「居るのに居ない」になる。
 // 使い方：<a class="pot" data-room="部屋名" href="…"> … <span class="state"></span> … </a> を置いて、このモジュールを読む。
 //   部屋 ID が名前と違う部屋（ハッシュ方式の常設部屋）は data-id="部屋ID" も付ける。在室は ID で引く（本体は call.joinedId を流す）
-const RELAYS = ['wss://relay.primal.net', 'wss://purplerelay.com', 'wss://bucket.coracle.social', 'wss://yabu.me/v2', 'wss://x.kojira.io', 'wss://relay.notoshi.win', 'wss://relay.mostr.pub']
+const RELAYS = ['wss://relay.primal.net', 'wss://purplerelay.com', 'wss://bucket.coracle.social', 'wss://yabu.me/v2', 'wss://x.kojira.io', 'wss://relay.notoshi.win', 'wss://relay.ditto.pub']
 const KIND = 20001
 const STALE_MS = 90000   // これだけ新着が無ければ「その人は席を立った」
 const GRACE_MS = 8000    // 接続直後、これだけ待って在室が無ければ「冷めている」で確定（それまでは「確認中」）
