@@ -2004,6 +2004,30 @@ def T68(r, room):
     click_leave(a); click_leave(c)
 
 
+def T69(r, room):
+    """リンクの入口の「このまま入ってみる」（v0.15.26）
+
+    ロビーでの発見が遅れると 12 秒後に「誰もいないみたい」になり、参加ボタンが消える＝実は開いている部屋に入れない
+    （10-06 の計測）。新しい形式のリンク（#room=ID）のお休み中の案内に「このまま入ってみる」を出し、押すと**リンクと
+    同じ部屋 ID**に入る。古い形式（#部屋名）には入る先の ID が無いので出さない。
+    """
+    rid = 'T69' + ''.join(random.choice(string.ascii_letters) for _ in range(13))   # 16 文字のハッシュ（誰もいない部屋）
+    t = r.open_tab(hash_='#room=%s&name=%s' % (rid, urllib.parse.quote(room + 'TRY')))
+    t.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    shown = t.wait_for("(() => { const b = document.getElementById('entryTry'); return !!b && !b.hidden && !!b.offsetParent })()", timeout=DISCOVER)
+    t.eval("document.getElementById('entryTry').click()", await_promise=False)
+    joined = t.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    same = t.eval("new URLSearchParams(location.hash.slice(1)).get('room')") == rid
+    t2 = r.open_tab(hash_='#' + urllib.parse.quote(room + 'TRYOLD'))
+    t2.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    asleep_old = t2.wait_for("!!document.getElementById('entryOpen').offsetParent", timeout=DISCOVER)
+    no_try_old = t2.eval("document.getElementById('entryTry').hidden")
+    ok = bool(shown and joined and same and asleep_old and no_try_old)
+    r.check('T69', 'お休み中のリンクから「このまま入ってみる」でリンクの部屋に入れる（古い形式には出さない）', ok, 'pass',
+            'ボタンが出る=%s / 参加=%s / 同じ部屋 ID=%s / 古い形式でお休み中=%s / 古い形式には出ない=%s' % (shown, joined, same, asleep_old, no_try_old))
+    click_leave(t)
+
+
 def T27g(r, room):
     """配信者は、聞き役が突然消えても勝手にリロードしない（v0.15.4）
 
@@ -2903,6 +2927,8 @@ def main():
             T66(r, room)
         if run('T68'):
             T68(r, room)
+        if run('T69'):
+            T69(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
