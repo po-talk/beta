@@ -49,7 +49,7 @@ const RELAYS = [
   'wss://yabu.me/v2',
   'wss://x.kojira.io',
   'wss://relay.notoshi.win',
-  'wss://relay.mostr.pub'
+  'wss://relay.ditto.pub'
 ]
 ```
 

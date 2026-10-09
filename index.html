@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.26
+  ぽっと通話〈実験版〉 v0.15.27
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -67,7 +67,7 @@
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
   media-src 'self' blob:;
-  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.mostr.pub;
+  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.ditto.pub;
   manifest-src 'self';
   base-uri 'self';
   form-action 'none';
@@ -1408,7 +1408,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.26'
+const APP_VERSION = 'v0.15.27'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2119,8 +2119,10 @@ const myProfilePayload = () => ({ name: profile.name, emoji: profile.emoji, mute
 const TRYSTERO_BASE = {
   appId: 'kuramo-webrtc-call',
   // 相手発見を速く・確実に：信頼できるnostrリレーを明示＋多重接続（デフォルトの当たり外れ対策）
+  // ★2026-10-09：relay.mostr.pub が 301 で relay.ditto.pub へ転送するだけになり（接続不可）、後継の relay.ditto.pub に差し替え。
+  //   一覧を変えたら CSP の connect-src・common/presence.js・tools/banner.html・greeter/echo・pop_demo も揃える（test/relaycheck.py で測る）
   relayConfig: {
-    urls: ['wss://relay.primal.net', 'wss://purplerelay.com', 'wss://bucket.coracle.social', 'wss://yabu.me/v2', 'wss://x.kojira.io', 'wss://relay.notoshi.win', 'wss://relay.mostr.pub'],
+    urls: ['wss://relay.primal.net', 'wss://purplerelay.com', 'wss://bucket.coracle.social', 'wss://yabu.me/v2', 'wss://x.kojira.io', 'wss://relay.notoshi.win', 'wss://relay.ditto.pub'],
     redundancy: 5
   }
 }
