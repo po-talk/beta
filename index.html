@@ -1,10 +1,23 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.23
+  ぽっと通話〈実験版〉 v0.15.24
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
   https://github.com/po-talk/po-talk.github.io
+
+  見取り図
+    head        依存関係・CSP・初回描画前のテーマ設定
+    style       画面と各状態の見た目
+    body        通話画面、ロビー、ヘルプなどのDOM
+    module      状態・データチャネル・参加/退出・ロビーの処理（詳細目次はmodule先頭）
+
+  処理の流れ
+    読込 → 画面とURLを初期化 → ロビーへ接続して部屋一覧を待つ
+    参加操作 → 入室先/役割を確定 → 必要な場合だけマイク取得 → 接続準備 →
+      データチャネルを配線して参加・在室通知を開始
+    退出 → 確保した音声/タイマー等を解放 → 通話状態を初期化（ロビー閲覧は継続）
+    つなぎ直し → 状態を一時保存 → 退出 → 再読込後に同じ部屋へ再参加
 
   ※ 版を上げるときは、この番号と <script> 内の APP_VERSION の両方を直すこと。 -->
 <!-- SPDX-License-Identifier: MIT / © 2026 qramo ・ 第三者ソフトの表示は THIRD_PARTY_NOTICES.md -->
@@ -1392,7 +1405,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.23'
+const APP_VERSION = 'v0.15.24'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -5910,6 +5923,7 @@ const HEARTBEAT_MS = 5000    // 在室ハートビート間隔
 // **短くしすぎない**：一覧の役目は「秘密の部屋が作れない」ことを示すことなので、まだ通話中の
 // 部屋が取りこぼしで消えるほうが、落ちた人が少し残るより悪い。誤りは残る側に倒しておく。
 const STALE_MS = 30000
+const LOBBY_LEAVE_GRACE_MS = 3000   // ロビーの相手が抜けてから在室を消すまで（つながり直したら消さない）
 let lobbyRoom = null, lobbyPresence = null, heartbeatTimer = null
 const lobbyRenderSeen = new Map()   // 発信者peerId → 最後に一覧を描き直した時刻（連打で全員の DOM 再構築が走るのを防ぐ）
 const lobbyRenderFlush = { t: null }   // 間引いた分をまとめて描き直すタイマー（取りこぼさない）
@@ -6413,7 +6427,14 @@ const openLobby = async (again, status, soft = false) => {
     }
     // 新しい閲覧者が来たら、自分が通話中なら即座に在室を送って一覧を埋める
     lobbyRoom.onPeerJoin = peerId => { lobbyPeers.add(peerId); renderViewers(); if (call.joinedId) sendHeartbeat() }
-    lobbyRoom.onPeerLeave = peerId => { lobbyPeers.delete(peerId); lobbyRenderSeen.delete(peerId); renderViewers(); presences.delete(peerId); renderLobby() }
+    // 抜けた相手の在室は、**少し待ってから**消す（v0.15.24・PR #4 の代案）。一瞬の回線の揺れで抜けて
+    // すぐつながり直した人の部屋まで、一覧から点滅して消えないように。ただし長くは待たない：
+    // タブを閉じた・スマホが落ちた人は退出（room: null）を送ってこないので、ここが一覧から消す唯一の合図
+    // （待たずに消していた v0.15.23 は 0.3 秒、待ちを掃除の 30 秒に任せる案では 34.5 秒、誰もいない部屋が残った）
+    lobbyRoom.onPeerLeave = peerId => {
+      lobbyPeers.delete(peerId); lobbyRenderSeen.delete(peerId); renderViewers()
+      setTimeout(() => { if (!lobbyPeers.has(peerId) && presences.delete(peerId)) renderLobby() }, LOBBY_LEAVE_GRACE_MS)
+    }
     // 取りこぼし対策：一定時間更新の無い相手を掃除
     lobbySweep = setInterval(() => {
       const cut = Date.now() - STALE_MS; let changed = false
