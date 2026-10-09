@@ -1952,6 +1952,24 @@ def T63(r, room):
     click_leave(l); click_leave(o)
 
 
+def T66(r, room):
+    """ロビー：通話中の人がタブを閉じたら（退出の合図なし）、その部屋は数秒で一覧から消える（v0.15.24）
+
+    タブを閉じた・スマホが落ちた人は room: null を送ってこないので、ロビーの onPeerLeave が消す唯一の合図。
+    回線の揺れによる点滅を抑えるため 3 秒待ってから消す。PR #4 の「30 秒の掃除に任せる」案では 34.5 秒残った。
+    """
+    o = r.open_tab()
+    r.join(o, room + 'CL')
+    c = r.open_tab()
+    if not c.wait_for('%s.includes(%s)' % (LOBBY, js_str(room + 'CL')), timeout=DISCOVER):
+        r.check('T66', 'タブを閉じた人の部屋が数秒で一覧から消える', False, 'pass', '一覧に出なかった'); return
+    o.call('Page.close')   # ブラウザのタブを閉じる（退出ボタンは押さない）
+    t0 = time.time()
+    gone = c.wait_for('!%s.includes(%s)' % (LOBBY, js_str(room + 'CL')), timeout=20)
+    dt = time.time() - t0
+    r.check('T66', 'タブを閉じた人の部屋が数秒で一覧から消える', bool(gone) and dt < 10, 'pass', '消えるまで %.1f 秒' % dt)
+
+
 def T27g(r, room):
     """配信者は、聞き役が突然消えても勝手にリロードしない（v0.15.4）
 
@@ -2847,6 +2865,8 @@ def main():
             T27h(r, room)
         if run('T63'):
             T63(r, room)
+        if run('T66'):
+            T66(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
