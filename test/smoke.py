@@ -2256,12 +2256,57 @@ def T73(r):
         return b && b.hidden && btn && !btn.hidden;
     })()""", timeout=SHORT)
 
+    # URL貼り付け時の自動切り詰め（OFUSE, Amazon, X）とラジオボタン自動選択の検証
+    a.eval("""(() => {
+        const inpOfuse = document.getElementById('ceTip_ofuse');
+        inpOfuse.value = 'https://ofuse.me/aa2c9a98';
+        inpOfuse.dispatchEvent(new Event('input'));
+
+        const inpAmz = document.getElementById('ceTip_amazon');
+        inpAmz.value = 'https://www.amazon.co.jp/hz/wishlist/ls/3869YUP07M5ZS?ref_=list_d_wl_lfu_nav_9';
+        inpAmz.dispatchEvent(new Event('input'));
+
+        const inpX = document.getElementById('ceSns_x');
+        inpX.value = 'https://x.com/potalk_app?s=20';
+        inpX.dispatchEvent(new Event('input'));
+    })()""")
+
+    trimmed_ofuse = a.wait_for("document.getElementById('ceTip_ofuse').value === 'aa2c9a98'", timeout=SHORT)
+    trimmed_amz = a.wait_for("document.getElementById('ceTip_amazon').value === '3869YUP07M5ZS'", timeout=SHORT)
+    trimmed_x = a.wait_for("document.getElementById('ceSns_x').value === 'potalk_app'", timeout=SHORT)
+
+    # 不正なURL入力時に is-bad が付与されるか検証
+    a.eval("""(() => {
+        const inpNote = document.getElementById('ceSns_note');
+        inpNote.value = 'https://example.com/bad_link';
+        inpNote.dispatchEvent(new Event('input'));
+    })()""")
+    is_bad_flag = a.wait_for("document.getElementById('ceSns_note').classList.contains('is-bad')", timeout=SHORT)
+
+    # 保存ボタンで不正入力を弾くか検証
+    a.eval("document.getElementById('ceSave').click()")
+    save_blocked = a.wait_for("!document.getElementById('ceWarn').hidden && document.getElementById('cardEditDlg').open", timeout=SHORT)
+
+    # 不正入力をクリアして正常保存できるか検証
+    a.eval("""(() => {
+        document.getElementById('ceSns_note').value = '';
+        document.getElementById('ceSns_note').dispatchEvent(new Event('input'));
+        document.getElementById('ceSave').click();
+    })()""")
+    saved_ok = a.wait_for("!document.getElementById('cardEditDlg').open", timeout=SHORT)
+
+    # 再度開いて解除テスト
+    a.eval("document.getElementById('btnOpenCardEdit').click()")
+    a.wait_for("document.getElementById('cardEditDlg').open", timeout=SHORT)
+
     a.eval("document.getElementById('ceCancel').click()")
 
-    ok = bool(dlg_open and btn_shown and auth_open and has_code and auth_closed and badge_shown and unverified)
-    r.check('T73', '名刺編集・認証チャレンジUI：認証ボタン出現・コード提示・モーダル開閉・バッジ解除', ok, 'pass',
-            '編集開=%s / 認証釦=%s / 認証開=%s / コード=%s / 認証閉=%s / バッジ=%s / 解除=%s'
-            % (dlg_open, btn_shown, auth_open, code_text, auth_closed, badge_shown, unverified))
+    ok = bool(dlg_open and btn_shown and auth_open and has_code and auth_closed and badge_shown and unverified and
+              trimmed_ofuse and trimmed_amz and trimmed_x and is_bad_flag and save_blocked and saved_ok)
+    r.check('T73', '名刺編集・認証チャレンジUI：URL自動切り詰め・形式検証・コード提示・モーダル開閉・バッジ解除', ok, 'pass',
+            '編集開=%s / 認証釦=%s / 認証開=%s / コード=%s / バッジ=%s / 解除=%s / OFUSE切詰=%s / Amazon切詰=%s / X切詰=%s / 不正検知=%s / 保存防御=%s / 保存OK=%s'
+            % (dlg_open, btn_shown, auth_open, code_text, badge_shown, unverified,
+               trimmed_ofuse, trimmed_amz, trimmed_x, is_bad_flag, save_blocked, saved_ok))
 
 
 
