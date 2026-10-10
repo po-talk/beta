@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.27
+  ぽっと通話〈実験版〉 v0.15.28
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1408,7 +1408,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.27'
+const APP_VERSION = 'v0.15.28'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1514,6 +1514,13 @@ const CALL_INIT = () => ({
   myReq: false,         // 聞き役：自分が挙手しているか
   enterSent: false,     // 聞き役：入室通知をこのセッションで送ったか（1 回だけ・v0.15.11）
   ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📣 と 🎙 を描き分けるため）
+  ownerAuthed: '',      // 聞き役：チャレンジ&レスポンスで**本人確認できた**配信者の peerId。これが ownerPeer と一致して初めて配信者として信じる（制御合図も音も）。peerId は自己申告で偽れるため（v0.15.28）
+  ownerNonce: '',       // 聞き役：いま配信者へ送っているチャレンジの乱数（返事の照合用）
+  ownerAuthAt: 0,       // 聞き役：最後にチャレンジを送った時刻（取りこぼし時の再送を間引く）
+  ownerHold: null,      // 聞き役：本人確認より先に届いた配信者枠の音 {id, ms, sid}。確認が取れたら載せる・取れなければ載らないまま消える
+  ownerAuthSince: 0,    // 聞き役：いまの配信者（の接続）に最初のチャレンジを送った時刻。AUTH_GRACE_MS たっても取れなければ「不在」扱い（終了カウントへ）
+  authAction: null,     // 配信者の本人確認（チャレンジ&レスポンス）のデータチャネル（v0.15.28）
+  authAskAt: new Map(), // 配信者：peerId → 最後に本人確認の署名に応じた時刻（連打で署名を走らされない）
   bcEnd: null,          // 聞き役側の「配信の終わり」の状態 { phase:'grace'|'ending', since, endAt }（v0.14.0）
   bcNoteDismissed: '',  // × で閉じた案内の文面（同じ内容の間は閉じたまま・内容が変われば出し直す・v0.15.15）
   bcEndTimer: null,     // 上を1秒ごとに見直すタイマー
@@ -2449,7 +2456,7 @@ const renderMembers = () => {
   let ownerRow = null   // 読み上げの仮想行はこの直下に置く
   // 配信部屋の印。配信者は 📣、あとから許された人は 🎙、それ以外は無印（＝聞き役）。
   // **誰が配信者かも署名の中に入っている**ので、自分の行か相手の行かで判断を変えなくてよい。
-  const bcMark = id => !call.bcast ? '' : (id && id === call.ownerPeer ? '📣' : call.speakers.has(id) ? '🎙' : (call.ownerKey && call.requests.has(id) ? '🙋' : ''))
+  const bcMark = id => !call.bcast ? '' : (ownerOk(id) ? '📣' : call.speakers.has(id) ? '🎙' : (call.ownerKey && call.requests.has(id) ? '🙋' : ''))   // 📣 は本人確認済みの配信者だけ（v0.15.28）
   // 聞き役はマイクを持っていないので、ミュート印を出しておく（一覧の見え方を「話せない人」で揃える）
   const selfRow = add('self', profile.emoji, profile.name, true, micOff(), stageOf(), call.usingRelay, null,
     call.bcast ? { mark: bcMark(myPeerId), grant: call.ownerKey ? { hidden: true } : null } : null)
@@ -2481,7 +2488,7 @@ const renderMembers = () => {
       ? { off: true, title: 'この人の音をまた受け取る', onClick: () => unignorePeer(id) }
       : { off: false, title: 'この人の音を受け取らない（無視。相手には伝わりません）', onClick: () => ignorePeer(id) }, bc)
     if (ig) row.classList.add('ignored')
-    if (id === call.ownerPeer) ownerRow = row
+    if (ownerOk(id)) ownerRow = row
   })
   // 読み上げの仮想メンバー 🗣「つくよみちゃん」（v0.14.44）。人ではないので人数に数えず、名簿の印も付けない。
   // 配信者の行の直下。音は 'tts' の <audio>（受け取る側）か自分の合成（配信者）で、跳ねは解析器（vadTick）が描く
@@ -3087,7 +3094,7 @@ const renderBgm = () => {
 // 部屋の初期値であって自分の既定ではないので、localStorage には保存しない。
 let bgmTouched = false
 const bgmSourcePeer = () => {
-  if (call.bcast) return (call.ownerPeer && call.ownerPeer !== myPeerId) ? call.ownerPeer : null
+  if (call.bcast) return (!call.ownerKey && ownerOk(call.ownerPeer)) ? call.ownerPeer : null   // 本人確認済みの配信者だけが源（v0.15.28）
   // 雑談：自分より先に入っていた人のうち、一番古い人（joinedAt が最小）。いなければ自分が最古＝源なし。
   const mineAt = call.joinedAt ? Date.now() - mySeconds() * 1000 : Infinity
   let best = null, bestAt = mineAt
@@ -3489,7 +3496,7 @@ const ttsSetOn = on => {          // 配信者：オン／オフをトラック�
   ttsAnnounce(); renderMembers()
 }
 // 受け取る側：案内が配信者（名簿の値）からのものなら、そのストリーム id
-const ttsSidOf = () => (call.ttsAnn && call.ttsAnn.on && call.ttsAnn.from === call.ownerPeer) ? call.ttsAnn.sid : ''
+const ttsSidOf = () => (call.ttsAnn && call.ttsAnn.on && ownerOk(call.ttsAnn.from)) ? call.ttsAnn.sid : ''
 // 受け取る側：読み上げの音が**実際に流れているか**（'tts' の要素の track が live かつ非 muted＝RTP が来ている）。
 // 仮想行はこれで出す（案内 {on} だけで出すと「行はあるのに音が来ない」が残る＝2026-09-26 実機・レビュー §3-1）
 const ttsFlowing = () => (call.audios.get('tts') || []).some(a => a.srcObject && a.srcObject.getAudioTracks().some(t => t.readyState === 'live' && !t.muted))
@@ -3502,7 +3509,7 @@ const TTS_REACK_MS = 15000
 let ttsWatchTimer = null
 const ttsSync = () => {
   const ann = call.ttsAnn
-  if (ann && ann.on && ann.from === call.ownerPeer && call.ttsAckedFrom !== ann.from) {
+  if (ann && ann.on && ownerOk(ann.from) && call.ttsAckedFrom !== ann.from) {
     call.ttsAckedFrom = ann.from; call.ttsAckAt = Date.now(); sendTo(call.ttsAction, { ok: true }, ann.from)
   }
   if (ann && ann.on && !call.ownerKey && !ttsWatchTimer) ttsWatchTimer = setInterval(ttsWatch, 5000)
@@ -4134,7 +4141,7 @@ const mkAudio = (id, ms, sid) => {
   return a
 }
 // 同じ物が既に載っているか（相手側のストリーム id か、トラック id のどちらかが一致すれば同じ物）
-const audiosOf = id => (call.audios.get(id) || []).concat(id && id === call.ownerPeer ? (call.audios.get('tts') || []) : [])
+const audiosOf = id => (call.audios.get(id) || []).concat(ownerOk(id) ? (call.audios.get('tts') || []) : [])
 const hasStream = (id, stream) => audiosOf(id).some(a =>
   a.sid === stream.id || (a.srcObject && a.srcObject.getTracks().some(t => stream.getTracks().some(u => u.id === t.id))))
 // 相手の音を載せ替える：要素（1本）→解析（絵文字の跳ね）→音量経路→再生。onPeerStream と __potTrack の共通部
@@ -4145,8 +4152,8 @@ const attachStream = (id, ms, sid) => {
   // ★送り直し（ttsResend）は同じ track を新しい MediaStream に包み直す。案内 {sid} が先に届く前提だが、それは同じデータチャネルの
   //   順序に頼った経験則で、ストリームが先に来ると配信者の行に載って mkAudio が**配信者のマイクの要素を捨てる**。
   //   'tts' として一度でも見た track id なら案内を待たずに 'tts' に載せる（レビュー 2026-09-27 §4）
-  const seenTts = id === call.ownerPeer && ms.getTracks().some(t => call.ttsTrackIds.has(t.id))
-  const uid = (sid && id === call.ownerPeer && sid === ttsSidOf()) || seenTts ? 'tts' : id
+  const seenTts = ownerOk(id) && ms.getTracks().some(t => call.ttsTrackIds.has(t.id))
+  const uid = (sid && ownerOk(id) && sid === ttsSidOf()) || seenTts ? 'tts' : id
   if (uid === 'tts') ms.getTracks().forEach(t => call.ttsTrackIds.add(t.id))
   const a = mkAudio(uid, ms, sid)  // 古い方は中で捨てる
   addAnalyser(uid, ms)             // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
@@ -4671,10 +4678,30 @@ const enc = s => new TextEncoder().encode(s)
 // 署名する文（決定的に組み立てる）。配信者本人の peerId も**署名の中に**入れる＝
 // 「誰が配信者か」も偽れない（一覧に 📣 と 🎙 を描き分けるのに使う）。
 const rosterMsg = (id, t, own, ids) => id + '\n' + t + '\n' + own + '\n' + ids.join(',')
+// 配信者の**本人確認**用に署名する文面（v0.15.28）。名簿（rosterMsg）とは接頭辞で分け、
+// 部屋ID と乱数を含める＝部屋をまたいだ使い回し・古い返事の再生（リプレイ）を防ぐ。
+const authMsg = (id, n) => 'auth\n' + id + '\n' + n
+// この peerId を「本人確認の済んだ配信者」として信じてよいか。**名簿に配信者と書かれている
+// だけでは足りない**（peerId は Nostr の合図の中の署名なしの値で、前の接続が切れたら別人が同じ ID を
+// 名乗れる）。秘密鍵を持つ本人だけが返せるチャレンジの返事を確かめてから true にする（canHear と各制御合図の門）。
+// オーナー自身は broadcastRoster で ownerAuthed=自分 を立てるのでここも true（自分の画面の 📣 用）。
+const ownerOk = id => !!id && id === call.ownerPeer && call.ownerAuthed === id
 
 // この人の音を鳴らしてよいか。**「対象をパラメータにする」フィルタ層の音声版**。
 // 無視（受信側だけで完結）と配信部屋（受信側の既定）は方向が同じなので単純に重なる（AND）。
-const canHear = id => !call.ignored.has(id) && (!call.bcast || call.speakers.has(id))
+// ★配信者の枠（ownerPeer）だけは**本人確認が済むまで鳴らさない**（v0.15.28）。名簿には配信者自身の
+//   peerId も話者として載るので、ここを緩めると配信者を名乗る別人の声がそのまま鳴る（2026-10-10 監査で実証）。
+const canHear = id => !call.ignored.has(id) && (!call.bcast || (call.speakers.has(id) && (id !== call.ownerPeer || call.ownerKey || call.ownerAuthed === id)))
+// 配信者枠の音が「名簿は採用済み・本人確認はまだ」の間に届いたら、捨てずに取り置く（v0.15.28）。
+// 効くのは、他の聞き役が転送した名簿が先に着いてから配信者本人がつながる場合（2 人目以降の聞き役で普通）と、
+// 送り直しの分。名簿より先に着いた分（配信者が誰かまだ分からない）は従来どおり捨て、本人確認の瞬間に
+// 「送り直して」を 1 回だけ頼む（名簿採用時の昇格ナッジは本人確認前の配信者枠には出さない＝そのナッジの
+// 送り直しが確認前に着いて捨てられ、確認後のナッジが配信者側の連打よけ NUDGE_ACCEPT_MS に掛かる競合を避ける）。
+// 配信者を名乗る別人の分は、確認が取れないので載らないまま、相手が去るか退出で消える。
+const holdOwnerStream = (id, ms, sid) => {
+  if (!call.bcast || call.ownerKey || id !== call.ownerPeer || call.ignored.has(id) || !call.speakers.has(id)) return
+  call.ownerHold = { id, ms, sid }   // 最新の 1 本だけ
+}
 
 // 検証済みの名簿を反映する。**音の出し入れはここに集約する**（画面の描き直しだけでは音は止まらない）。
 const setSpeakers = ids => {
@@ -4686,7 +4713,7 @@ const setSpeakers = ids => {
     if (before && !now) { dropAudios(id); removeAnalyser(id); call.nudges.delete(id) }   // 降格＝その場で黙らせる
     // 昇格したのに音が無い＝相手は既にストリームを送り終えている可能性がある。無視を戻すときと
     // 同じやり方で「送り直して」を頼む（こちらの都合で捨てた分を取り戻す）。
-    if (!before && now && !call.ignored.has(id) && !(call.audios.get(id) || []).length) {
+    if (!before && now && canHear(id) && !(call.audios.get(id) || []).length) {   // 本人確認前の配信者枠には頼まない（確認の瞬間に取り置きを載せる・v0.15.28）
       sendTo(call.nudgeAction, 1, id)
       call.peerSince.set(id, Date.now())   // 監視の待ち時間を数え直す（すぐ警告を出さない）
     }
@@ -4714,6 +4741,7 @@ const broadcastRoster = async (target = null) => {
   try { sig = b64u(await crypto.subtle.sign(SIGN_ALG, call.ownerKey, enc(rosterMsg(id, t, own, ids)))) } catch { return }
   if (id !== call.joinedId) return       // 署名の間に退出・部屋移動していたら捨てる
   call.rosterT = t; call.rosterSeen = t; call.ownerPeer = own
+  call.ownerAuthed = own   // 自分がオーナー＝本人確認は自明（own === myPeerId）。自分の画面の 📣／canHear 用（v0.15.28）
   const roster = { pk: call.ownerPub, t, o: own, ids, sig }
   call.roster = roster
   sendTo(call.bcAction, roster, target)
@@ -4726,6 +4754,38 @@ const broadcastRoster = async (target = null) => {
 const forwardRoster = id => {
   if (call.ownerKey) { broadcastRoster(id); return }
   if (call.roster) sendTo(call.bcAction, call.roster, id)
+}
+// ───────── 配信者の本人確認（チャレンジ&レスポンス・v0.15.28） ─────────
+// 名簿は署名済みなので「配信者の公開鍵」は本物だが、**いま配信者の peerId を名乗っている接続が本当に本人か**は
+// 名簿だけでは分からない（peerId は偽れる）。そこで聞き役は配信者へ乱数を送り、本人（秘密鍵の持ち主）だけが返せる
+// 署名を確かめる。これが済むまで canHear も各制御合図も配信者として信じない。
+const AUTH_RETRY_MS = 2500
+const challengeOwner = (force = false) => {
+  if (call.ownerKey || !call.bcast || !call.authAction) return
+  const own = call.ownerPeer
+  if (!own || !call.peers.has(own) || call.ownerAuthed === own) return
+  if (!force && Date.now() - call.ownerAuthAt < AUTH_RETRY_MS) return   // 取りこぼし時の再送は間引く
+  const n = b64u(crypto.getRandomValues(new Uint8Array(16)))
+  call.ownerNonce = n; call.ownerAuthAt = Date.now()
+  if (!call.ownerAuthSince) call.ownerAuthSince = call.ownerAuthAt   // この接続への最初のチャレンジ（ownerPresent の猶予の起点）
+  sendTo(call.authAction, { k: 'q', n }, own)
+}
+// 本人確認が取れた瞬間に、配信者の分として取り置いていた合図を当て、確認前に捨てた音を取り直す。
+const onOwnerAuthed = own => {
+  if (call.ttsAnnEarly) { const e = call.ttsAnnEarly.get(own); if (e) { call.ttsAnn = e; call.ttsAnnEarly.delete(own) } }
+  if (call.reqOpenEarly && call.reqOpenEarly.peerId === own) {
+    const e = call.reqOpenEarly; call.reqOpenEarly = null
+    call.reqOpenSeen = e.on; if (!e.on) call.myReq = false
+  }
+  ttsSync(); maybeAdoptBgm()
+  // 確認前に届いていた配信者の音（取り置き）をそのまま載せる。無ければ／トラックが終わっていれば、
+  // 昇格時と同じやり方で「送り直して」を頼んで取り戻す。
+  const h = call.ownerHold; call.ownerHold = null
+  if (canHear(own) && !(call.audios.get(own) || []).length) {
+    if (h && h.id === own && h.ms.getAudioTracks().some(t => t.readyState === 'live')) attachStream(own, h.ms, h.sid)
+    else { sendTo(call.nudgeAction, 1, own); call.peerSince.set(own, Date.now()) }
+  }
+  renderMembers(); renderSpeak(); renderBcNote()
 }
 // 受け取った名簿の検証。**ここを緩めると配信部屋の意味が無くなる**ので、条件は全部残すこと。
 const acceptRoster = async d => {
@@ -4749,16 +4809,14 @@ const acceptRoster = async d => {
   const ownerChanged = call.ownerPeer !== own
   call.rosterSeen = t; call.ownerPeer = own
   call.roster = { pk: pub, t, o: own, ids, sig }
+  // ★配信者（の peerId）が変わったら本人確認をやり直す（v0.15.28）。名簿が本物でも、いまその peerId を
+  //   名乗っている接続が本人とは限らない。確認が済むまで前の配信者の読み上げ案内も引きずらない。
+  if (!call.ownerKey && ownerChanged) { call.ownerAuthed = ''; call.ttsAnn = null; call.ownerHold = null; call.ownerAuthSince = 0 }
   setSpeakers(ids)
-  if (call.reqOpenEarly) {   // 名簿より先に届いていた「募集中」を、配信者本人からのものなら当てる（v0.15.19）
-    const e = call.reqOpenEarly; call.reqOpenEarly = null
-    if (e.peerId === own) { call.reqOpenSeen = e.on; if (!e.on) call.myReq = false; renderSpeak() }
-  }
-  if (call.ttsAnnEarly) {    // 名簿より先に届いていた読み上げの案内を、配信者本人のものだけ当てる（v0.15.25）
-    const e = call.ttsAnnEarly.get(own)
-    if (e) { call.ttsAnn = e; call.ttsAnnEarly.delete(own) }
-  }
-  ttsSync()   // 読み上げの案内が名簿より先に届いていたら、ここで評価する（{ok} を返す・仮想行を出す）
+  if (!call.ownerKey && own) challengeOwner(ownerChanged)   // 本人確認のチャレンジを送る（済みなら何もしない）
+  // ★取り置き（募集中・読み上げ案内）の適用と BGM の採用は**本人確認が取れてから**（onOwnerAuthed）。
+  //   名簿だけで当てると、配信者を名乗る別人の合図をそのまま反映してしまう（2026-10-10 監査）。
+  ttsSync()   // すでに本人確認済み（同じ配信者の名簿の配り直し）なら、ここで従来どおり再評価する
   // ★「枠主が誰か」が分かった**その瞬間**に、いまの募集と公開中のお便りを取りに行く。
   // 枠主からの push（mailSync）は**名簿より先に着くことがある**（名簿の送信は署名の計算を挟むので
   // 非同期）。先に着いた分は ownerPeer が未確定なので捨てられる＝**後から入った人に募集が出ない**
@@ -4809,9 +4867,18 @@ const toggleGrant = id => {
 // 15 秒後にロビーへ送る。放置されたタブの掃除を兼ねる。「終わった配信は終わる」（設計方針）。
 // 配信者の在否は**名簿に書かれた配信者の peerId が接続にいるか**で見る（自己申告ではない）。
 const BC_GRACE_MS = 60000, BC_BYE_MS = 15000
-const ownerPresent = () => !!(call.ownerPeer && call.peers.has(call.ownerPeer))
+// ★v0.15.28：接続があるだけでは足りない。本人確認（oath）が AUTH_GRACE_MS たっても取れない接続は「不在」と
+//   見なして終了カウントへ回す（配信者を名乗る別人が居座っても部屋が終わる／旧版の配信者で声が出ない端境期にも
+//   理由が出る）。参加直後は猶予の中なのでちらつかない。
+const AUTH_GRACE_MS = 10000
+const ownerPresent = () => {
+  if (!call.ownerPeer || !call.peers.has(call.ownerPeer)) return false
+  if (call.ownerAuthed === call.ownerPeer) return true
+  return !call.ownerAuthSince || Date.now() - call.ownerAuthSince < AUTH_GRACE_MS
+}
 const bcEndTick = () => {
   if (!call.joinedId || !call.bcast || call.ownerKey) return
+  challengeOwner()   // 本人確認のチャレンジが取りこぼされていたら送り直す（済み／配信者不在なら何もしない・v0.15.28）
   const now = Date.now()
   if (ownerPresent()) { if (call.bcEnd) { call.bcEnd = null; renderBcNote() } return }
   if (!call.bcEnd) call.bcEnd = { phase: 'grace', since: now, endAt: 0 }
@@ -4833,8 +4900,12 @@ const renderBcNote = () => {
   const e = call.bcEnd
   if (e && !call.ownerKey) {
     const left = Math.max(0, Math.ceil((e.phase === 'grace' ? e.since + BC_GRACE_MS - Date.now() : e.endAt - Date.now()) / 1000))
+    // 接続はあるのに本人確認が取れない（AUTH_GRACE_MS 超え）＝旧版の配信者か、配信者を名乗る別の人（v0.15.28）
+    const unverified = call.ownerPeer && call.peers.has(call.ownerPeer) && call.ownerAuthed !== call.ownerPeer
     txt = e.phase === 'grace'
-      ? '📣 配信者の接続が切れました。戻るのを待っています（あと ' + left + ' 秒）'
+      ? (unverified
+        ? '📣 配信者の本人確認ができません。配信者のページが古いか、配信者を名乗る別の人かもしれません（あと ' + left + ' 秒で終了）'
+        : '📣 配信者の接続が切れました。戻るのを待っています（あと ' + left + ' 秒）')
       : '📣 配信が終了しました。' + left + ' 秒後に「通話中の部屋」へ戻ります'
   } else {
     txt = call.ownerKey
@@ -5190,7 +5261,7 @@ const wireRoom = () => {
   call.room.onPeerStream = (stream, id) => {
     // ★受信側の門番。**無視した相手／配信部屋で承認されていない相手の音は、ここで捨てる。**
     // 送信側の善意に頼らないので、改造クライアントが勝手に喋っても誰の耳にも届かない。
-    if (!canHear(id)) return
+    if (!canHear(id)) { holdOwnerStream(id, stream, stream.id); return }   // 配信者枠の本人確認待ちだけ取り置く（v0.15.28）
     // 同じ相手から何度もストリームが来る（再ネゴ、そして「送り直して」を頼んだ結果）。
     // 足し続けると無音の <audio> と古い MediaStream への参照が溜まるので、1人につき1本に保つ。
     // ★通常は下の __potTrack（トラック到着）が先に同じ物を載せていて、ここは何もしない。
@@ -5205,9 +5276,11 @@ const wireRoom = () => {
   window.__potTrack = (pc, e) => {
     if (!call.room || !e.track || e.track.kind !== 'audio') return
     const id = Object.keys(call.room.getPeers()).find(k => call.room.getPeers()[k] === pc)
-    if (!id || !canHear(id)) return
+    if (!id) return
+    const sid = e.streams[0] ? e.streams[0].id : e.track.id
+    if (!canHear(id)) { holdOwnerStream(id, new MediaStream([e.track]), sid); return }   // 配信者枠の本人確認待ちだけ取り置く（v0.15.28）
     if (audiosOf(id).some(a => a.srcObject && a.srcObject.getTracks().some(t => t.id === e.track.id))) return
-    attachStream(id, new MediaStream([e.track]), e.streams[0] ? e.streams[0].id : e.track.id)
+    attachStream(id, new MediaStream([e.track]), sid)
   }
 
   // 「退出します」の合図。**退出する側が抜ける前に送る。**受け取っていれば正規の退出、
@@ -5240,7 +5313,7 @@ const wireRoom = () => {
       return
     }
     if ('now' in d) {  // 読んでいる人の行を光らせる（配信者からだけ）。連打よけはここだけ
-      if (peerId !== call.ownerPeer) return
+      if (!ownerOk(peerId)) return   // 本人確認の済んだ配信者からだけ（v0.15.28）
       // ★無視の門は**状態**なので、連打よけより前で必ず取り込む（{now:null} の直後の {now:X} を捨てると漏れる）
       call.ttsNow = typeof d.now === 'string' && d.now !== myPeerId ? d.now.slice(0, 64) : null
       ttsGate()
@@ -5257,7 +5330,7 @@ const wireRoom = () => {
     //   ★配信者と一致しない送り主のものも捨てずに取っておく：配信者がつなぎ直すと peerId が変わり、新しい名簿より先に
     //   新しい配信者の案内が届く（T55b で踏んだ）。送り主ごとに 1 件だけ（上書き）なので、偽の送り主が何を送っても当たらない
     const ann = { from: peerId, sid: typeof d.sid === 'string' ? d.sid.slice(0, 64) : '', on: !!d.on }
-    if (peerId !== call.ownerPeer) { (call.ttsAnnEarly ||= new Map()).set(peerId, ann); return }
+    if (!ownerOk(peerId)) { (call.ttsAnnEarly ||= new Map()).set(peerId, ann); return }   // 本人確認が済むまで取り置き（v0.15.28）
     call.ttsAnn = ann
     ttsSync()
   }
@@ -5291,6 +5364,47 @@ const wireRoom = () => {
   call.bcAction = call.room.makeAction('bc')
   call.bcAction.onMessage = d => { acceptRoster(d) }
 
+  // 配信者の本人確認（チャレンジ&レスポンス・v0.15.28）。peerId は自己申告で偽れるので、
+  // 「配信者の peerId を名乗る接続」が本当に秘密鍵を持つ本人かを、乱数への署名で確かめる。
+  // 聞き役→配信者 {k:'q', n}（乱数のチャレンジ）／配信者→聞き役 {k:'a', n, sig}（authMsg への署名）。
+  call.authAction = call.room.makeAction('oath')
+  call.authAction.onMessage = (d, { peerId }) => {
+    if (!call.bcast || !d || typeof d !== 'object') return
+    if (d.k === 'q') {   // 配信者側：チャレンジに署名して返す（連打で署名を走らされないよう間引く）
+      if (!call.ownerKey || !call.joinedId) return
+      const n = typeof d.n === 'string' && d.n.length <= 64 ? d.n : ''
+      if (!n) return
+      const now = Date.now()
+      if (now - (call.authAskAt.get(peerId) || 0) < 500) return
+      call.authAskAt.set(peerId, now)
+      const id = call.joinedId
+      crypto.subtle.sign(SIGN_ALG, call.ownerKey, enc(authMsg(id, n)))
+        .then(s => { if (id === call.joinedId) sendTo(call.authAction, { k: 'a', n, sig: b64u(s) }, peerId) })
+        .catch(() => {})
+      return
+    }
+    if (d.k === 'a') {   // 聞き役側：返事を確かめる。**名簿で指紋照合済みの公開鍵**でだけ検証する
+      if (call.ownerKey) return
+      const own = call.ownerPeer
+      if (!own || peerId !== own || call.ownerAuthed === own) return
+      if (!call.roster || !B64U_RE.test(call.roster.pk || '')) return
+      const n = typeof d.n === 'string' ? d.n : ''
+      const sig = typeof d.sig === 'string' && B64U_RE.test(d.sig) ? d.sig : ''
+      if (!n || !sig || n !== call.ownerNonce) return   // 自分が送った未処理のチャレンジへの返事だけ
+      const id = call.joinedId, pk = call.roster.pk
+      importVerify(pk)
+        .then(key => key && crypto.subtle.verify(SIGN_ALG, key, unb64u(sig), enc(authMsg(id, n))))
+        .then(okv => {
+          // 検証の間に配信者・部屋・チャレンジが変わっていないか最後にもう一度見る
+          if (okv && id === call.joinedId && peerId === call.ownerPeer && n === call.ownerNonce && call.ownerAuthed !== peerId) {
+            call.ownerAuthed = peerId
+            onOwnerAuthed(peerId)
+          }
+        }).catch(() => {})
+      return
+    }
+  }
+
   // 登壇引き継ぎトークン（v0.14.26）。つなぎ直し・リロード後も登壇権限を自動復元する。
   call.grantAction = call.room.makeAction('grant')
   call.grantAction.onMessage = (d, { peerId }) => {
@@ -5300,8 +5414,7 @@ const wireRoom = () => {
       // ★入った直後は名簿の検証（非同期・署名の確認）が済んでおらず、配信者が誰かまだ分からない。
       //   配信者は onPeerJoin の瞬間に送ってくるので、ここで捨てると**後から入った人に 🙋 が出ない**
       //   （v0.15.19 まで。募集をオンオフし直すと直っていたのはこのため）。取っておいて、名簿で確かめてから当てる
-      if (!call.ownerPeer) { call.reqOpenEarly = { peerId, on: !!d.on }; return }
-      if (peerId !== call.ownerPeer) return
+      if (!ownerOk(peerId)) { if (!call.ownerAuthed) call.reqOpenEarly = { peerId, on: !!d.on }; return }   // 本人確認が済むまで取り置き（v0.15.28）
       call.reqOpenSeen = !!d.on
       if (!call.reqOpenSeen) call.myReq = false   // 締め切られたら自分の希望も畳む
       renderSpeak()
@@ -5316,13 +5429,13 @@ const wireRoom = () => {
     }
     // リスナー側：枠主からトークンを受け取った
     if (d.k === 'grant' && typeof d.tok === 'string') {
-      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      if (!ownerOk(peerId)) return   // 本人確認の済んだ配信者からだけ（v0.15.28）
       ssSet(GRANT_KEY_PREFIX + call.joinedId, d.tok)
       return
     }
     // リスナー側：枠主から許可を外された
     if (d.k === 'revoke') {
-      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      if (!ownerOk(peerId)) return   // 本人確認の済んだ配信者からだけ（v0.15.28）
       ssDel(GRANT_KEY_PREFIX + call.joinedId)
       return
     }
@@ -5352,7 +5465,7 @@ const wireRoom = () => {
     }
     // リスナー側：復元完了通知
     if (d.k === 'granted' && typeof d.tok === 'string') {
-      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      if (!ownerOk(peerId)) return   // 本人確認の済んだ配信者からだけ（v0.15.28）
       ssSet(GRANT_KEY_PREFIX + call.joinedId, d.tok)
       showPeerNotice('🎙 登壇権限を引き継ぎました。「マイクを使う」を押すと声が届きます')
     }
@@ -5390,7 +5503,7 @@ const wireRoom = () => {
       return
     }
     // ★ここから下は枠主が出したものだけ。この1行がこの機能の要。
-    if (!call.ownerPeer || peerId !== call.ownerPeer) return
+    if (!ownerOk(peerId)) return   // 本人確認の済んだ配信者からだけ（v0.15.28）
     if (d.k === 'open') { call.mailOpen = true; call.mailTitle = capText(d.t, MAIL_TITLE_MAX); call.mailSent = '' }
     else if (d.k === 'close') { call.mailOpen = false; call.mailSent = ''; call.mailShown = null }
     else if (d.k === 'show') {
@@ -5435,6 +5548,10 @@ const wireRoom = () => {
     call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
     call.ttsSent.delete(id); call.ttsSentStream.delete(id); call.ttsResentAt.delete(id)   // 読み上げを配った記録（入り直せば別 ID＝改めて {ok} を待つ）
     if (id === call.ownerPeer && call.ttsAnn) { call.ttsAnn = null; call.ttsTrackIds.clear(); dropAudios('tts'); removeAnalyser('tts') }   // 配信者が抜けた＝仮想行も畳む
+    if (id === call.ownerAuthed) { call.ownerAuthed = ''; call.ownerNonce = '' }   // 本人確認済みの配信者が抜けた＝同じ peerId を名乗る別人が来ても必ず確認し直す（v0.15.28）
+    if (id === call.ownerPeer) call.ownerAuthSince = 0   // 次の接続には改めて猶予を与える
+    call.authAskAt.delete(id)                            // 配信者側：本人確認の署名に応じた記録も捨てる
+    if (call.ownerHold && call.ownerHold.id === id) call.ownerHold = null   // 取り置いていた音も捨てる
     // 登壇の許可も同じ理由で持ち越さない（入り直した人は別の peerId＝改めて許可し直す）。
     // オーナーは原本から消すが、**名簿を配り直さない**：残った人の許可は変わらないので、
     // 抜けた人ぶんの署名をやり直す必要が無い（次の grant/revoke か定期配布で揃う）。
