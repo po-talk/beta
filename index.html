@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.28
+  ぽっと通話〈実験版〉 v0.15.29
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1408,7 +1408,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.28'
+const APP_VERSION = 'v0.15.29'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3794,7 +3794,12 @@ let joinQuiet = false
 // 聞き役の入室通知を全員へ 1 回だけ。普通＝名前つき、静かに＝匿名。使ったら普通に戻す（リンク入室などが静かにならないように）。
 const sendEnterNotice = () => {
   if (!call.chatAction || !call.bcast || call.ownerKey) return
-  sendTo(call.chatAction, { sys: 'enter', q: !!joinQuiet, n: joinQuiet ? '' : profile.name })
+  const q = !!joinQuiet, n = q ? '' : profile.name
+  sendTo(call.chatAction, { sys: 'enter', q, n })
+  // 自分の画面にも同じ行を出す（v0.15.29）。Trystero は自分の送信を自分に配らないので、送り手だけ
+  // 通知を見られなかった。ほかの人に見えているのと同じ文面（受け手側 chatAction の組み立てと揃える）。
+  // 自分の分は読み上げず、未読の点も付けない。
+  logSystem(q ? '誰かが静かに入室しました' : (capText(n, 20) || 'ゲスト') + ' さんが入室しました')
   joinQuiet = false
 }
 {

@@ -2140,6 +2140,9 @@ def T27i(r, room):
                         ".some(e => e.textContent.endsWith('さんが入室しました'))", timeout=DISCOVER + 5)
     named = o.eval("[...document.querySelectorAll('#chatLog .cl-sys .cl-text')]"
                    ".some(e => e.textContent === %s + ' さんが入室しました')" % js_str(lname)) if lname else notice
+    # ★本人の画面にも同じ行が出る（v0.15.29）。Trystero は自分の送信を自分に配らないので、送り手側で出す必要がある
+    selfline = l.wait_for("[...document.querySelectorAll('#chatLog .cl-sys .cl-text')]"
+                          ".some(e => e.textContent === %s + ' さんが入室しました')" % js_str(lname or 'ゲスト'), timeout=SHORT)
     # ★🤫 チェックの存在：第三のタブ c がロビーで配信部屋をタップ → #roomAskQuiet が出る（聞き役のときだけ）
     c = r.open_tab()
     c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
@@ -2148,9 +2151,9 @@ def T27i(r, room):
     if tapped:
         c.eval(RB + ".click()", await_promise=False)
     quiet_box = c.wait_for("!!document.getElementById('roomAskQuiet')", timeout=SHORT)
-    ok = notice and named and quiet_box
-    r.check('T27i', '入室通知：聞き役の入室が「〇〇さんが入室しました」で出る・🤫 静かにチェックがある', ok, 'pass',
-            'ひとことに入室通知=%s / 名前つき=%s / 🤫チェックあり=%s' % (notice, named, quiet_box))
+    ok = notice and named and selfline and quiet_box
+    r.check('T27i', '入室通知：聞き役の入室が「〇〇さんが入室しました」で出る・本人にも出る・🤫 静かにチェックがある', ok, 'pass',
+            'ひとことに入室通知=%s / 名前つき=%s / 本人の画面にも=%s / 🤫チェックあり=%s' % (notice, named, selfline, quiet_box))
     click_leave(l); click_leave(o)
 
 
