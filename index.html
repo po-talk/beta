@@ -67,7 +67,7 @@
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
   media-src 'self' blob:;
-  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.ditto.pub;
+  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com https://api.github.com https://publish.x.com https://publish.twitter.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.ditto.pub;
   manifest-src 'self';
   base-uri 'self';
   form-action 'none';
@@ -261,7 +261,22 @@
   .ce-row .ce-ok{ flex:none; width:1.5em; text-align:center; font-size:13px }
   .ce-none{ display:flex; align-items:center; gap:8px; margin:6px 0; font-size:13px; color:var(--sub); cursor:pointer }
   .ce-none input{ width:auto; margin:0; accent-color:var(--accent) }
-  .help-dialog p.ce-note{ font-size:12px; color:var(--note); margin:4px 0 10px; line-height:1.6 }
+  .ce-ver-btn{ flex:none; width:auto; margin:0; padding:6px 10px; font-size:12.5px; font-weight:700; border-radius:8px;
+    background:var(--accent-dim); color:var(--link); border:1px solid var(--link); cursor:pointer; white-space:nowrap }
+  .ce-ver-btn:disabled{ opacity:.4; cursor:not-allowed; border-color:var(--border-soft); color:var(--sub); background:var(--chip) }
+  .ce-ver-badge{ flex:none; font-size:16px; cursor:pointer; padding:2px 4px }
+  .ce-un-badge{ flex:none; font-size:11px; color:var(--note); background:var(--panel); border:1px solid var(--border-soft); padding:3px 6px; border-radius:6px }
+  .ca-account{ font-weight:700; font-size:14px; color:var(--text); margin-bottom:8px; padding:8px 12px; background:var(--panel); border-radius:10px; border:1px solid var(--border-soft) }
+  .ca-code-box{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:10px;
+    background:var(--panel); border:1px solid var(--accent); margin:6px 0 10px }
+  .ca-code-box code{ font-size:16px; font-weight:700; color:var(--accent); font-family:monospace; user-select:all }
+  .ca-copy-btn{ width:auto !important; margin:0 !important; padding:6px 12px !important; font-size:12.5px !important; border-radius:8px !important; background:var(--chip) !important; color:var(--chip-fg) !important; cursor:pointer }
+  .ca-input-row{ margin:10px 0 }
+  .ca-input-row input{ width:100%; padding:10px 12px; font-size:16px; border-radius:10px; border:1px solid var(--border); background:var(--panel); color:var(--text) }
+  .ca-msg{ margin:10px 0; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.5 }
+  .ca-msg.ok{ background:var(--accent-dim); color:var(--link); border:1px solid var(--link) }
+  .ca-msg.bad{ background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn-border) }
+  .ca-note{ font-size:11.5px; color:var(--note); line-height:1.5; margin:6px 0 0 }
   .ce-actions{ display:flex; gap:10px; margin-top:14px }
   .ce-actions button{ flex:1; width:auto; margin:0; padding:12px; font-size:14px; border-radius:10px }
   #ceSave{ background:var(--join-bg); color:var(--join-fg) }
@@ -1467,33 +1482,64 @@
   <div class="ce-row">
     <span class="ce-name">𝕏 (Twitter)</span>
     <input type="text" id="ceSns_x" placeholder="@なしのID" autocomplete="off" maxlength="15">
-    <span class="ce-ok" id="ceSnsOk_x" title="未認証"></span>
+    <button class="ce-ver-btn" id="ceBtnVer_x" type="button" title="本人確認を行う">認証</button>
+    <span class="ce-ver-badge" id="ceVerBadge_x" title="認証済み（タップで解除）" hidden>✅</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">🐙 GitHub</span>
     <input type="text" id="ceSns_github" placeholder="ユーザ名" autocomplete="off" maxlength="39">
-    <span class="ce-ok" id="ceSnsOk_github" title="未認証"></span>
+    <button class="ce-ver-btn" id="ceBtnVer_github" type="button" title="本人確認を行う">認証</button>
+    <span class="ce-ver-badge" id="ceVerBadge_github" title="認証済み（タップで解除）" hidden>✅</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">📝 note</span>
     <input type="text" id="ceSns_note" placeholder="クリエイター名" autocomplete="off" maxlength="32">
-    <span class="ce-ok" id="ceSnsOk_note" title="未認証"></span>
+    <span class="ce-un-badge" title="自己申告リンク">自己申告</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">📸 Instagram</span>
     <input type="text" id="ceSns_instagram" placeholder="ユーザ名（自己申告）" autocomplete="off" maxlength="30">
-    <span class="ce-ok" id="ceSnsOk_instagram"></span>
+    <span class="ce-un-badge" title="自己申告リンク">自己申告</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">🟣 Nostr</span>
     <input type="text" id="ceSns_nostr" placeholder="npub1..." autocomplete="off" maxlength="64">
-    <span class="ce-ok" id="ceSnsOk_nostr" title="未認証"></span>
+    <button class="ce-ver-btn" id="ceBtnVer_nostr" type="button" title="拡張機能で本人確認">認証</button>
+    <span class="ce-ver-badge" id="ceVerBadge_nostr" title="認証済み（タップで解除）" hidden>✅</span>
   </div>
-  <p class="ce-note">※ IDを入れるだけで手軽に掲載できます。認証コード等の検証を通すと ✅ 認証バッジが灯ります。</p>
+  <p class="ce-note">※ IDを入れるだけで手軽に掲載できます。「認証」を押して本人確認コードを検証すると ✅ 認証バッジが灯ります。</p>
 
   <div class="ce-actions">
     <button id="ceSave" type="button">保存する</button>
     <button id="ceCancel" type="button">閉じる</button>
+  </div>
+</dialog>
+<!-- SNS 本人確認チャレンジモーダル（v0.16.0） -->
+<dialog id="cardAuthDlg" class="help-dialog card-dialog" aria-labelledby="caTitle">
+  <button class="help-x" id="caClose" type="button" aria-label="閉じる">✕</button>
+  <h2 id="caTitle" style="margin:0 36px 8px 0">本人確認</h2>
+  <div id="caAccount" class="ca-account"></div>
+  <p id="caDesc" class="sub" style="margin:0 0 10px;font-size:13px;line-height:1.6"></p>
+
+  <div id="caCodeSec">
+    <label class="ce-lbl" style="margin:8px 0 4px">確認用コード</label>
+    <div class="ca-code-box">
+      <code id="caCode"></code>
+      <button id="caCopyCode" class="ca-copy-btn" type="button">📋 コピー</button>
+    </div>
+  </div>
+
+  <div id="caInputSec" class="ca-input-row" hidden>
+    <label class="ce-lbl" for="caInputUrl" style="margin:8px 0 4px">コードを投稿したポストのURL</label>
+    <input type="url" id="caInputUrl" placeholder="https://x.com/ユーザー名/status/..." autocomplete="off">
+  </div>
+
+  <div id="caMsg" class="ca-msg" hidden></div>
+  <p id="caNote" class="ca-note"></p>
+
+  <div class="ce-actions">
+    <button id="caVerifyBtn" type="button">確認する</button>
+    <button id="caCancelBtn" type="button">やめる</button>
   </div>
 </dialog>
 <!-- 未認証リンク注意喚起ダイアログ（v0.16.0） -->
@@ -2461,6 +2507,56 @@ const syncBioCount = () => {
 }
 $('ceBio').oninput = syncBioCount
 
+// 確認用ワンタイムコードの管理（potalk-xxxx）
+const AUTH_CODE_KEY = 'pot-call-auth-code'
+const getAuthCode = () => {
+  let c = lsGet(AUTH_CODE_KEY)
+  if (!c || !c.startsWith('potalk-')) {
+    c = 'potalk-' + Math.random().toString(36).slice(2, 6)
+    lsSet(AUTH_CODE_KEY, c)
+  }
+  return c
+}
+
+// Nostr bech32 (npub) デコーダ
+const decodeNpub = npub => {
+  if (typeof npub !== 'string' || !npub.startsWith('npub1') || npub.length !== 63) return null
+  const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
+  const data = []
+  for (let i = 5; i < npub.length - 6; i++) {
+    const idx = CHARSET.indexOf(npub[i])
+    if (idx === -1) return null
+    data.push(idx)
+  }
+  let acc = 0, bits = 0
+  const res = []
+  for (const v of data) {
+    acc = (acc << 5) | v
+    bits += 5
+    while (bits >= 8) {
+      bits -= 8
+      res.push((acc >> bits) & 255)
+    }
+  }
+  return res.map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+const syncVerUi = () => {
+  const c = loadCard()
+  const ver = c.verified || {}
+  for (const k of ['x', 'github', 'nostr']) {
+    const val = $('ceSns_' + k)?.value.trim()
+    const isVer = !!ver[k] && !!val && val === c.socials?.[k]
+    const btn = $('ceBtnVer_' + k)
+    const badge = $('ceVerBadge_' + k)
+    if (btn) {
+      btn.hidden = isVer
+      btn.disabled = !val
+    }
+    if (badge) badge.hidden = !isVer
+  }
+}
+
 const openCardEdit = () => {
   const c = loadCard()
   $('ceBio').value = c.bio || ''
@@ -2475,18 +2571,182 @@ const openCardEdit = () => {
   $('ceTip_bmac').value = tip.p === 'bmac' ? (tip.id || '') : (c.savedTips?.bmac || '')
 
   const soc = c.socials || {}
-  const ver = c.verified || {}
   for (const k of ['x', 'github', 'note', 'instagram', 'nostr']) {
     const el = $('ceSns_' + k)
     if (el) el.value = soc[k] || ''
-    const ok = $('ceSnsOk_' + k)
-    if (ok) ok.textContent = ver[k] ? '✅' : ''
   }
+  syncVerUi()
   try { $('cardEditDlg').showModal() } catch {}
 }
 $('btnOpenCardEdit').onclick = openCardEdit
 $('ceClose').onclick = () => { $('cardEditDlg').close() }
 $('ceCancel').onclick = () => { $('cardEditDlg').close() }
+
+// 入力値が変わったら認証状態を同期
+for (const k of ['x', 'github', 'nostr']) {
+  const el = $('ceSns_' + k)
+  if (el) el.oninput = syncVerUi
+  const badge = $('ceVerBadge_' + k)
+  if (badge) {
+    badge.onclick = () => {
+      const c = loadCard()
+      if (c.verified && c.verified[k]) {
+        delete c.verified[k]
+        saveCard(c)
+        syncVerUi()
+      }
+    }
+  }
+}
+
+// ── 本人確認チャレンジモーダル ──
+let curAuthService = null
+let curAuthId = ''
+
+const openCardAuth = service => {
+  const inputEl = $('ceSns_' + service)
+  const id = inputEl ? inputEl.value.trim() : ''
+  const def = SNS_DEFS[service]
+  if (!id || !def || !def.re.test(id)) {
+    inputEl?.focus()
+    return
+  }
+  curAuthService = service
+  curAuthId = id
+
+  $('caMsg').hidden = true
+  $('caMsg').textContent = ''
+  $('caVerifyBtn').disabled = false
+  $('caVerifyBtn').textContent = '確認する'
+
+  const code = getAuthCode()
+  $('caCode').textContent = code
+
+  if (service === 'github') {
+    $('caTitle').textContent = '🐙 GitHub 本人確認'
+    $('caAccount').textContent = '対象アカウント: @' + id
+    $('caDesc').textContent = 'あなたの GitHub プロフィールの「自己紹介 (bio)」に、一時的に下記の確認コードを記載して「確認する」を押してください。'
+    $('caCodeSec').hidden = false
+    $('caInputSec').hidden = true
+    $('caNote').textContent = '※ 公開 REST API で bio を照合します。認証完了後は bio からコードを削除して問題ありません。'
+  } else if (service === 'x') {
+    $('caTitle').textContent = '𝕏 (Twitter) 本人確認'
+    $('caAccount').textContent = '対象アカウント: @' + id
+    $('caDesc').textContent = '下記の確認コードを含むポスト（ツイート）を投稿し、その投稿の URL を下に入力して「確認する」を押してください。'
+    $('caCodeSec').hidden = false
+    $('caInputSec').hidden = false
+    $('caInputUrl').value = ''
+    $('caNote').textContent = '※ 公式 oEmbed API で照合します。認証完了後は投稿を削除して問題ありません。'
+  } else if (service === 'nostr') {
+    $('caTitle').textContent = '🟣 Nostr 本人確認'
+    $('caAccount').textContent = '対象: ' + id.slice(0, 16) + '...'
+    $('caDesc').textContent = 'ブラウザの NIP-07 拡張機能（nos2x, Alby 等）を使用して、この npub の秘密鍵を所有していることを確認します。'
+    $('caCodeSec').hidden = true
+    $('caInputSec').hidden = true
+    $('caNote').textContent = '※ 拡張機能から公開鍵を取得して一致を検証します。'
+  } else {
+    return
+  }
+
+  try { $('cardAuthDlg').showModal() } catch {}
+}
+
+$('ceBtnVer_x').onclick = () => openCardAuth('x')
+$('ceBtnVer_github').onclick = () => openCardAuth('github')
+$('ceBtnVer_nostr').onclick = () => openCardAuth('nostr')
+
+$('caClose').onclick = () => { $('cardAuthDlg').close() }
+$('caCancelBtn').onclick = () => { $('cardAuthDlg').close() }
+$('caCopyCode').onclick = () => {
+  const code = $('caCode').textContent
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(code).then(() => {
+      $('caCopyCode').textContent = '✅ コピー済'
+      setTimeout(() => { $('caCopyCode').textContent = '📋 コピー' }, 1500)
+    }).catch(() => {})
+  }
+}
+
+$('caVerifyBtn').onclick = async () => {
+  const service = curAuthService
+  const id = curAuthId
+  const code = getAuthCode()
+  const btn = $('caVerifyBtn')
+  const msg = $('caMsg')
+
+  btn.disabled = true
+  btn.textContent = '照合中...'
+  msg.hidden = true
+
+  try {
+    if (service === 'github') {
+      const res = await fetch('https://api.github.com/users/' + encodeURIComponent(id), {
+        headers: { 'Accept': 'application/vnd.github.v3+json' }
+      })
+      if (!res.ok) {
+        if (res.status === 404) throw new Error('GitHub ユーザーが見つかりません (@' + id + ')')
+        if (res.status === 403) throw new Error('GitHub API の利用制限中です。少し待ってからお試しください')
+        throw new Error('GitHub API エラー (' + res.status + ')')
+      }
+      const data = await res.json()
+      const bio = data.bio || ''
+      if (!bio.includes(code)) {
+        throw new Error('自己紹介 (bio) に確認コード (' + code + ') が見つかりませんでした。bio に貼り付けて保存したか確認してください。')
+      }
+    } else if (service === 'x') {
+      const url = $('caInputUrl').value.trim()
+      if (!url) throw new Error('ポストの URL を入力してください')
+      const m = url.match(/(?:x|twitter)\.com\/([a-zA-Z0-9_]+)\/status\/(\d+)/i)
+      if (!m) throw new Error('正しいポストの URL を入力してください (例: https://x.com/' + id + '/status/...)')
+      if (m[1].toLowerCase() !== id.toLowerCase()) {
+        throw new Error('指定されたポストの投稿者 (@' + m[1] + ') が入力された ID (@' + id + ') と異なります')
+      }
+      const res = await fetch('https://publish.x.com/oembed?url=' + encodeURIComponent(url))
+      if (!res.ok) throw new Error('ポストを取得できませんでした。公開アカウントの投稿か確認してください')
+      const data = await res.json()
+      const html = data.html || ''
+      if (!html.includes(code)) {
+        throw new Error('投稿内容に確認コード (' + code + ') が含まれていません。投稿を確認してください。')
+      }
+    } else if (service === 'nostr') {
+      if (!window.nostr || typeof window.nostr.getPublicKey !== 'function') {
+        throw new Error('NIP-07 拡張機能 (nos2x や Alby など) がブラウザに見つかりません')
+      }
+      const hex = await window.nostr.getPublicKey()
+      const targetHex = decodeNpub(id)
+      if (!targetHex) throw new Error('入力された npub の形式が正しくありません')
+      if (hex.toLowerCase() !== targetHex.toLowerCase()) {
+        throw new Error('拡張機能のアカウントが入力された npub と一致しません')
+      }
+    }
+
+    // 認証成功
+    msg.className = 'ca-msg ok'
+    msg.textContent = '🎉 本人確認が完了しました！✅ 認証バッジを付与しました。'
+    msg.hidden = false
+    btn.textContent = '✅ 認証完了'
+
+    const c = loadCard()
+    c.verified = c.verified || {}
+    c.verified[service] = true
+    c.socials = c.socials || {}
+    c.socials[service] = id
+    saveCard(c)
+
+    syncVerUi()
+
+    setTimeout(() => {
+      try { $('cardAuthDlg').close() } catch {}
+    }, 1200)
+
+  } catch (err) {
+    msg.className = 'ca-msg bad'
+    msg.textContent = '⚠️ ' + (err.message || '認証に失敗しました')
+    msg.hidden = false
+    btn.disabled = false
+    btn.textContent = '再試行する'
+  }
+}
 
 $('ceSave').onclick = () => {
   const bio = capText($('ceBio').value.trim(), 60)
@@ -6421,7 +6681,7 @@ const resetJoinedUI = () => {
   $('tagRow').hidden = true; $('tagForm').hidden = true   // 話題タグの行（join/leave の対称）
   $('tabChat').classList.remove('unread')                // ひとことの未読の点も持ち越さない
   clearTimeout(leaveConfirmTimer); $('leaveConfirm').hidden = true   // 退出の確認も畳む
-  try { $('cardDlg').close(); $('cardEditDlg').close(); $('cardWarnDlg').close() } catch {}
+  try { $('cardDlg').close(); $('cardEditDlg').close(); $('cardWarnDlg').close(); $('cardAuthDlg').close() } catch {}
   // ★退出したら URL から部屋を落とす。参加時に焼き付けたままだと、**次に開いたとき
   //   「共有リンクから来た人」と区別がつかない**（＝最初の画面で「部屋を作る」が開いてしまう。
   //   2026-09-12 に利用者が遭遇）。URL としても、居ない部屋を指したままなのは嘘。
@@ -6533,7 +6793,7 @@ const leaveCall = () => {
   // つなぎ直しの失敗で一度手動で入り直した場合や、枠主が一時退出から戻った場合でも復元できるようにするため。
   // （明示的な登壇解除時は toggleGrant が双方で即時破棄する）
   clearTimeout(call.noticeTimer); showPeerNotice('')            // 前の通知を残さない
-  try { $('cardDlg').close(); $('cardEditDlg').close(); $('cardWarnDlg').close() } catch {}
+  try { $('cardDlg').close(); $('cardEditDlg').close(); $('cardWarnDlg').close(); $('cardAuthDlg').close() } catch {}
   if (call.stream) call.stream.getTracks().forEach(t => t.stop())
   ;[...call.audios.keys()].forEach(dropAudios)                 // **reset で Map ごと捨てる前に** DOM を消す
   if (call.wakeLock) call.wakeLock.release().catch(() => {})

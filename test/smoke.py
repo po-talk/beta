@@ -2196,6 +2196,75 @@ def T72(r, room):
     click_leave(a); click_leave(b)
 
 
+def T73(r):
+    """プロフィールカード編集＆認証チャレンジUI（v0.16.0）：
+    編集モーダル（#cardEditDlg）展開、SNS入力で認証ボタン出現、
+    認証モーダル（#cardAuthDlg）展開でワンタイムコード提示、
+    認証済みバッジのタップによる解除機能が正しく動作すること。
+    """
+    a = r.open_tab()
+    # プロフィール編集を開く
+    a.eval("document.getElementById('btnOpenCardEdit').click()")
+    dlg_open = a.wait_for("document.getElementById('cardEditDlg').open", timeout=SHORT)
+
+    # GitHub アカウントを入力
+    a.eval("""(() => {
+        const inp = document.getElementById('ceSns_github');
+        inp.value = 'octocat';
+        inp.dispatchEvent(new Event('input'));
+    })()""")
+
+    # 認証ボタンが表示されたか確認
+    btn_shown = a.wait_for("""(() => {
+        const btn = document.getElementById('ceBtnVer_github');
+        return btn && !btn.hidden;
+    })()""", timeout=SHORT)
+
+    # 認証ボタンをクリックして認証モーダルを開く
+    a.eval("document.getElementById('ceBtnVer_github').click()")
+    auth_open = a.wait_for("document.getElementById('cardAuthDlg').open", timeout=SHORT)
+
+    # ワンタイムコードが表示されているか
+    code_text = a.eval("document.getElementById('caCode').textContent")
+    has_code = bool(code_text and code_text.startswith('potalk-'))
+
+    # キャンセルで閉じる
+    a.eval("document.getElementById('caCancelBtn').click()")
+    auth_closed = a.wait_for("!document.getElementById('cardAuthDlg').open", timeout=SHORT)
+
+    # 認証済み状態をシミュレートしてUI同期
+    a.eval("""(() => {
+        const c = JSON.parse(localStorage.getItem('pot-call-card') || '{}');
+        c.socials = { github: 'octocat' };
+        c.verified = { github: true };
+        localStorage.setItem('pot-call-card', JSON.stringify(c));
+        // 再度編集モーダルを開き直して同期
+        document.getElementById('ceCancel').click();
+        document.getElementById('btnOpenCardEdit').click();
+    })()""")
+
+    badge_shown = a.wait_for("""(() => {
+        const b = document.getElementById('ceVerBadge_github');
+        return b && !b.hidden && b.textContent.includes('✅');
+    })()""", timeout=SHORT)
+
+    # 認証バッジをクリックして解除
+    a.eval("document.getElementById('ceVerBadge_github').click()")
+    unverified = a.wait_for("""(() => {
+        const b = document.getElementById('ceVerBadge_github');
+        const btn = document.getElementById('ceBtnVer_github');
+        return b && b.hidden && btn && !btn.hidden;
+    })()""", timeout=SHORT)
+
+    a.eval("document.getElementById('ceCancel').click()")
+
+    ok = bool(dlg_open and btn_shown and auth_open and has_code and auth_closed and badge_shown and unverified)
+    r.check('T73', '名刺編集・認証チャレンジUI：認証ボタン出現・コード提示・モーダル開閉・バッジ解除', ok, 'pass',
+            '編集開=%s / 認証釦=%s / 認証開=%s / コード=%s / 認証閉=%s / バッジ=%s / 解除=%s'
+            % (dlg_open, btn_shown, auth_open, code_text, auth_closed, badge_shown, unverified))
+
+
+
 def T70(r):
     """配信者の本人確認（oath・v0.15.28）：配信者が抜けた後に同じ peerId を名乗る改造クライアントが来ても、
     新入りはそれを配信者として扱わない（📣 なし・配信者専用のおたより非表示・音 0）。正規の聞き役は従来どおり 📣。
@@ -3191,6 +3260,8 @@ def main():
             T71b(r, room)
         if run('T72'):
             T72(r, room)
+        if run('T73'):
+            T73(r)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
