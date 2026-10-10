@@ -220,7 +220,8 @@
   #ignoreNo{ background:var(--mute); color:var(--text) }
   /* 名刺（プロフィールカード・v0.16.0） */
   .card-dialog{ max-width:400px }
-  .cd-head{ display:flex; align-items:center; gap:12px; margin:0 0 14px }
+  .cd-head{ display:flex; align-items:center; gap:12px; margin:0 36px 14px 0 }
+  .cd-head .cd-info{ min-width:0; flex:1 }
   .cd-emoji{ flex:none; width:52px; height:52px; border-radius:14px; display:flex; align-items:center; justify-content:center;
     font-size:30px; background:var(--panel); border:1px solid var(--border-faint) }
   .cd-head h2{ margin:0; font-size:18px; word-break:break-all }
@@ -1401,13 +1402,13 @@
 </dialog>
 <!-- 名刺の閲覧モーダル（v0.16.0） -->
 <dialog id="cardDlg" class="help-dialog card-dialog" aria-labelledby="cdName">
+  <button class="help-x" id="cdClose" type="button" aria-label="閉じる">✕</button>
   <div class="cd-head">
     <div class="cd-emoji" id="cdEmoji">🙂</div>
-    <div>
+    <div class="cd-info">
       <h2 id="cdName">名前</h2>
       <div class="cd-state" id="cdState">通話中</div>
     </div>
-    <button class="help-x" id="cdClose" type="button" aria-label="閉じる">✕</button>
   </div>
   <p class="cd-bio" id="cdBio"></p>
   <div class="cd-tip" id="cdTip" hidden>
@@ -1427,10 +1428,8 @@
 </dialog>
 <!-- 名刺の編集モーダル（v0.16.0） -->
 <dialog id="cardEditDlg" class="help-dialog card-dialog" aria-labelledby="ceTitle">
-  <div class="head-row">
-    <h2 id="ceTitle" style="margin:0 0 8px">📇 名刺（プロフィール）設定</h2>
-    <button class="help-x" id="ceClose" type="button" aria-label="閉じる">✕</button>
-  </div>
+  <button class="help-x" id="ceClose" type="button" aria-label="閉じる">✕</button>
+  <h2 id="ceTitle" style="margin:0 36px 8px 0">📇 名刺（プロフィール）設定</h2>
   <p class="sub" style="margin:0 0 12px;font-size:12.5px">端末にのみ保存され、相手があなたのアイコン・名前を押した時だけ直接渡されます。</p>
   <label class="ce-lbl" for="ceBio">ひとこと（bio）<span id="ceBioCnt" class="char-count">0/60</span></label>
   <textarea id="ceBio" maxlength="60" placeholder="自己紹介やステータスなど（最大60文字）" rows="2"></textarea>

@@ -2157,6 +2157,26 @@ def T72(r, room):
         return un && un.textContent.includes('未認証');
     })()""")
 
+    # 閉じるボタン（#cdClose）で閉じられることを確認
+    close_btn = a.eval("""(() => {
+        const btn = document.getElementById('cdClose');
+        if (!btn) return false;
+        btn.click();
+        return true;
+    })()""")
+    closed_by_x = a.wait_for("!document.getElementById('cardDlg').open", timeout=SHORT)
+
+    # 再度開く
+    reopened = a.eval("""(() => {
+        const row = [...document.querySelectorAll('#members .member')].find(el => !el.querySelector('.you'));
+        if (!row) return false;
+        const tap = row.querySelector('.m-tap');
+        if (!tap) return false;
+        tap.click();
+        return true;
+    })()""")
+    reopened_ok = a.wait_for("document.getElementById('cardDlg').open", timeout=SHORT)
+
     # 自衛ボタン（#cdIgnore）をクリック
     ignored = a.eval("""(() => {
         const btn = document.getElementById('cdIgnore');
@@ -2169,10 +2189,10 @@ def T72(r, room):
     # タブAでタブBが無視されたか確認（メンバー行に .ignored が付く）
     peer_ignored = a.wait_for("document.querySelectorAll('#members .member.ignored').length === 1", timeout=SHORT)
 
-    ok = bool(joined and opened and dlg_open and bio_ok and tip_ok and x_badge and un_badge and ignored and dlg_closed and peer_ignored)
-    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/認証/Tip)・自衛ボタンで無視連動', ok, 'pass',
-            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / 認証バッジ=%s / 未認証バッジ=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
-            % (joined, opened, dlg_open, bio_ok, tip_ok, x_badge, un_badge, ignored, dlg_closed, peer_ignored))
+    ok = bool(joined and opened and dlg_open and bio_ok and tip_ok and x_badge and un_badge and close_btn and closed_by_x and reopened and reopened_ok and ignored and dlg_closed and peer_ignored)
+    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/認証/Tip)・✕で閉じる・自衛ボタンで無視連動', ok, 'pass',
+            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / 認証バッジ=%s / 未認証バッジ=%s / ✕閉=%s / 再開=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
+            % (joined, opened, dlg_open, bio_ok, tip_ok, x_badge, un_badge, closed_by_x, reopened_ok, ignored, dlg_closed, peer_ignored))
     click_leave(a); click_leave(b)
 
 
