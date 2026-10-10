@@ -1970,6 +1970,31 @@ def T66(r, room):
     r.check('T66', 'タブを閉じた人の部屋が数秒で一覧から消える', bool(gone) and dt < 10, 'pass', '消えるまで %.1f 秒' % dt)
 
 
+def T70(r):
+    """配信者の本人確認（oath・v0.15.28）：配信者が抜けた後に同じ peerId を名乗る改造クライアントが来ても、
+    新入りはそれを配信者として扱わない（📣 なし・配信者専用のおたより非表示・音 0）。正規の聞き役は従来どおり 📣。
+
+    peerId を名乗るには Trystero の selfId を差し替えた bundle が要るので、完全ローカル隔離の e2e
+    （internal/security/2026-10-10-peerid/browser-repro/fullrun.py：ローカルリレー＋本物の index.html）を呼ぶ。
+    internal（非公開 repo）が無い環境では飛ばす。将来のリファクタで門番（ownerOk/canHear）が外れたときの保険。
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    script = os.path.join(here, '..', 'internal', 'security', '2026-10-10-peerid', 'browser-repro', 'fullrun.py')
+    if not os.path.exists(script):
+        print('  ⏭️  SKIP   T70 配信者の本人確認（internal/ が無いので飛ばす）'); return
+    try:
+        p = subprocess.run([sys.executable, script], capture_output=True, text=True, timeout=240,
+                           env={**os.environ, 'POT_ROOT': os.path.abspath(os.path.join(here, '..'))})
+        out = p.stdout
+    except subprocess.TimeoutExpired as e:
+        out = (e.stdout or b'').decode(errors='replace') if isinstance(e.stdout, bytes) else (e.stdout or '')
+        p = None
+    res = [l for l in out.splitlines() if l.startswith('RESULT ')]
+    r.check('T70', '配信者の本人確認：偽の配信者（同じ peerId）は 📣 にならず・おたよりも音も通らない・正規の聞き役は 📣',
+            bool(res) and res[-1].startswith('RESULT ok=1'), 'pass',
+            (res[-1] if res else '結果行なし: ' + out[-300:].replace('\n', ' / ')))
+
+
 def T68(r, room):
     """古い入口リンク（#部屋名）は、同じ名前の部屋が複数開いていたら自動で選ばない（v0.15.25）
 
@@ -2929,6 +2954,8 @@ def main():
             T68(r, room)
         if run('T69'):
             T69(r, room)
+        if run('T70'):
+            T70(r)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
