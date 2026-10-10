@@ -2119,9 +2119,10 @@ def T72(r, room):
     """
     name = room + 'CARD'
     a, b = r.open_tab(), r.open_tab()
-    # タブBに名刺データを設定
+    # タブBに名刺データ（アバター画像付き）を設定
     b.eval("""(() => {
         const card = {
+            avatar: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
             bio: 'テスト自己紹介',
             tip: { p: 'ofuse', id: 'sampleuser' },
             socials: { x: 'test_x_user', note: 'test_note' },
@@ -2148,6 +2149,7 @@ def T72(r, room):
     # 相手の名刺データが届いて反映されるのを待つ
     bio_ok = a.wait_for("document.getElementById('cdBio').textContent === 'テスト自己紹介'", timeout=SHORT)
     tip_ok = a.eval("document.getElementById('cdTipSub').textContent.includes('sampleuser')")
+    avatar_ok = a.wait_for("!document.getElementById('cdAvatar').hidden && document.getElementById('cdEmoji').hidden && !document.getElementById('cdSubEmoji').hidden", timeout=SHORT)
     x_badge = a.eval("""(() => {
         const ok = document.querySelector('#cdSocials .cd-ok');
         return ok && ok.textContent.includes('✅');
@@ -2189,10 +2191,10 @@ def T72(r, room):
     # タブAでタブBが無視されたか確認（メンバー行に .ignored が付く）
     peer_ignored = a.wait_for("document.querySelectorAll('#members .member.ignored').length === 1", timeout=SHORT)
 
-    ok = bool(joined and opened and dlg_open and bio_ok and tip_ok and x_badge and un_badge and close_btn and closed_by_x and reopened and reopened_ok and ignored and dlg_closed and peer_ignored)
-    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/認証/Tip)・✕で閉じる・自衛ボタンで無視連動', ok, 'pass',
-            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / 認証バッジ=%s / 未認証バッジ=%s / ✕閉=%s / 再開=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
-            % (joined, opened, dlg_open, bio_ok, tip_ok, x_badge, un_badge, closed_by_x, reopened_ok, ignored, dlg_closed, peer_ignored))
+    ok = bool(joined and opened and dlg_open and bio_ok and tip_ok and avatar_ok and x_badge and un_badge and close_btn and closed_by_x and reopened and reopened_ok and ignored and dlg_closed and peer_ignored)
+    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/認証/Tip/画像＋添え絵文字)・✕で閉じる・自衛ボタンで無視連動', ok, 'pass',
+            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / アバター画像=%s / 認証バッジ=%s / 未認証バッジ=%s / ✕閉=%s / 再開=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
+            % (joined, opened, dlg_open, bio_ok, tip_ok, avatar_ok, x_badge, un_badge, closed_by_x, reopened_ok, ignored, dlg_closed, peer_ignored))
     click_leave(a); click_leave(b)
 
 
