@@ -2163,6 +2163,11 @@ def T72(r, room):
         return ids.some(t => t.startsWith('npub1exu6') && t.includes('…') && t.length < 20);
     })()""")
 
+    btn_has_heart = a.eval("""(() => {
+        const btn = document.getElementById('cdIgnore');
+        return !!(btn && btn.querySelector('svg'));
+    })()""")
+
     # 閉じるボタン（#cdClose）で閉じられることを確認
     close_btn = a.eval("""(() => {
         const btn = document.getElementById('cdClose');
@@ -2172,16 +2177,29 @@ def T72(r, room):
     })()""")
     closed_by_x = a.wait_for("!document.getElementById('cardDlg').open", timeout=SHORT)
 
-    # 再度開く
-    reopened = a.eval("""(() => {
-        const row = [...document.querySelectorAll('#members .member')].find(el => !el.querySelector('.you'));
+    # チャットログからの名刺展開テスト：タブBからひとこと送信
+    b.eval("""(() => {
+        const txt = document.getElementById('chatText');
+        if (txt) txt.value = 'テストチャット';
+        const snd = document.getElementById('chatSend');
+        if (snd) snd.click();
+    })()""")
+    chat_arrived = a.wait_for("document.querySelectorAll('#chatLog .cl-row:not(.cl-sys)').length >= 1", timeout=SHORT)
+    # 1回目のタップで行を選択（.pick になり❤️が出る）
+    row_picked = a.eval("""(() => {
+        const row = document.querySelector('#chatLog .cl-row.can');
         if (!row) return false;
-        const tap = row.querySelector('.m-tap');
-        if (!tap) return false;
-        tap.click();
+        row.click();
+        return row.classList.contains('pick');
+    })()""")
+    # 2回目のタップ（選択中に名前をタップ）で名刺が開く
+    name_tapped = a.eval("""(() => {
+        const who = document.querySelector('#chatLog .cl-row.pick .cl-who');
+        if (!who) return false;
+        who.click();
         return true;
     })()""")
-    reopened_ok = a.wait_for("document.getElementById('cardDlg').open", timeout=SHORT)
+    dlg_open_from_chat = a.wait_for("document.getElementById('cardDlg').open", timeout=SHORT)
 
     # 自衛ボタン（#cdIgnore）をクリック
     ignored = a.eval("""(() => {
@@ -2195,10 +2213,10 @@ def T72(r, room):
     # タブAでタブBが無視されたか確認（メンバー行に .ignored が付く）
     peer_ignored = a.wait_for("document.querySelectorAll('#members .member.ignored').length === 1", timeout=SHORT)
 
-    ok = bool(joined and opened and dlg_open and bio_ok and tip_ok and avatar_ok and x_badge and un_badge and nostr_shortened and close_btn and closed_by_x and reopened and reopened_ok and ignored and dlg_closed and peer_ignored)
-    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/認証/Tip/画像＋添え絵文字/Nostr短縮)・✕で閉じる・自衛ボタンで無視連動', ok, 'pass',
-            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / アバター画像=%s / 認証バッジ=%s / 未認証バッジ=%s / Nostr短縮=%s / ✕閉=%s / 再開=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
-            % (joined, opened, dlg_open, bio_ok, tip_ok, avatar_ok, x_badge, un_badge, nostr_shortened, closed_by_x, reopened_ok, ignored, dlg_closed, peer_ignored))
+    ok = bool(joined and opened and dlg_open and bio_ok and tip_ok and avatar_ok and x_badge and un_badge and nostr_shortened and btn_has_heart and close_btn and closed_by_x and chat_arrived and row_picked and name_tapped and dlg_open_from_chat and ignored and dlg_closed and peer_ignored)
+    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/認証/Tip/画像＋添え絵文字/Nostr短縮/自衛ハートSVG)・✕で閉じる・チャット名前タップで開く・自衛ボタンで無視連動', ok, 'pass',
+            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / アバター画像=%s / 認証バッジ=%s / 未認証バッジ=%s / Nostr短縮=%s / 自衛ハート=%s / ✕閉=%s / チャット着=%s / 行選択=%s / 名前タップ=%s / チャットから開=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
+            % (joined, opened, dlg_open, bio_ok, tip_ok, avatar_ok, x_badge, un_badge, nostr_shortened, btn_has_heart, closed_by_x, chat_arrived, row_picked, name_tapped, dlg_open_from_chat, ignored, dlg_closed, peer_ignored))
     click_leave(a); click_leave(b)
 
 
