@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.29
+  ぽっと通話〈実験版〉 v0.15.30
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1408,7 +1408,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.29'
+const APP_VERSION = 'v0.15.30'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1675,11 +1675,26 @@ const drawQr = async () => {
 // 招待リンクのコピーは**「部屋名 - 名前」＋改行＋URL**（v0.14.7・利用者の提案）。SNS に貼ったときに
 // 何の部屋か・誰の部屋かが見える（OGP は # より後ろがサーバに届かないので部屋名を出せない）。
 // 配信部屋は 📣、それ以外は 🫖。アプリ内ブラウザのバナー（copyTop）は「Safari で開く」ためなので URL だけ
-const shareText = () => {
-  const id = pendingRoom()
-  const who = (profile.name || '').trim() || 'ゲスト'
-  return (isBcRoom(id) ? '📣 ' : '🫖 ') + pendingRoomName() + ' - ' + who + '\n' + shareUrl()
+// 名前の欄（v0.15.30・利用者の要望）：
+//   雑談部屋＝**在室者の名前の羅列**（自分を先頭に。参加前は自分だけ）。配信部屋＝**配信者の名前**
+//   （自分が配信者なら自分、聞き役なら本人確認済みの配信者のプロフィール名）。取れなければ本人の名前に落とす。
+// 羅列は SHARE_NAMES_MAX 人まで並べ、超える分は「ほか N 人」（SNS に貼る 1 行なので長くしない）
+const SHARE_NAMES_MAX = 5
+const namesLine = names => {
+  const ns = [...new Set(names.map(n => (n || '').trim()).filter(Boolean))]
+  if (!ns.length) return ''
+  return ns.slice(0, SHARE_NAMES_MAX).join('、') + (ns.length > SHARE_NAMES_MAX ? ' ほか ' + (ns.length - SHARE_NAMES_MAX) + ' 人' : '')
 }
+const shareWho = () => {
+  const me = (profile.name || '').trim()
+  if (!call.joinedId) return me || 'ゲスト'
+  if (call.bcast) {
+    const owner = call.ownerKey ? me : (ownerOk(call.ownerPeer) ? (call.profiles.get(call.ownerPeer) || {}).name : '')
+    return (owner || '').trim() || me || 'ゲスト'
+  }
+  return namesLine([me, ...[...call.peers].map(id => (call.profiles.get(id) || {}).name)]) || 'ゲスト'
+}
+const shareText = () => (isBcRoom(pendingRoom()) ? '📣 ' : '🫖 ') + pendingRoomName() + ' - ' + shareWho() + '\n' + shareUrl()
 const copyLink = async (btn, text = shareUrl()) => {
   const original = btn.dataset.label || (btn.dataset.label = btn.textContent)  // 初回の文言を保持
   try {
@@ -2222,11 +2237,14 @@ const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 // シェアアイコン（ロビーの部屋URLコピー用：iPhone/iOSで親しまれている「箱から上矢印」）
 const SHARE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>'
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>'
-const copyRoomUrl = async (el, id, name) => {
+const copyRoomUrl = async (el, id, name, people = []) => {
   const url = roomUrl(id, name)
   // 招待リンクのコピー（shareText）と同じ形＝**「部屋名 - 名前」＋改行＋URL**（v0.15.29・利用者の要望）。
-  // SNS に貼ったとき何の部屋か・誰からかが見える。名前はコピーする本人（招待と同じ）。配信部屋は 📣、それ以外は 🫖
-  const who = (profile.name || '').trim() || 'ゲスト'
+  // SNS に貼ったとき何の部屋か・誰の部屋かが見える。名前の欄は在室情報から（v0.15.30）：配信部屋は 📣 と
+  // **配信者の名前**（配信者印 bo の人）、雑談部屋は 🫖 と**在室者の名前の羅列**。取れなければコピーする本人の名前
+  const bc = isBcRoom(id)
+  const who = (bc ? ((people.find(p => p.bo) || {}).name || '').trim() : namesLine(people.map(p => p.name)))
+    || (profile.name || '').trim() || 'ゲスト'
   const text = (isBcRoom(id) ? '📣 ' : '🫖 ') + ((name || '').trim() || '部屋') + ' - ' + who + '\n' + url
   try {
     await navigator.clipboard.writeText(text)
@@ -6375,8 +6393,8 @@ const renderLobby = () => {
     sh.setAttribute('title', '部屋名とリンクをコピー')
     sh.setAttribute('aria-label', '部屋名とリンクをコピー')
     sh.innerHTML = SHARE_SVG
-    sh.onclick = e => { e.stopPropagation(); copyRoomUrl(sh, room, lobbyName(room, people)) }
-    sh.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyRoomUrl(sh, room, lobbyName(room, people)) } }
+    sh.onclick = e => { e.stopPropagation(); copyRoomUrl(sh, room, lobbyName(room, people), people) }
+    sh.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyRoomUrl(sh, room, lobbyName(room, people), people) } }
     top.append(nm, ct, sh)
     // タグが付いた部屋は、元の部屋名と付けた人を添える（部屋名が埋もれないよう span で分けて強調）
     let sub = null
