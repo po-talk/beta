@@ -1518,6 +1518,7 @@ const CALL_INIT = () => ({
   ownerNonce: '',       // 聞き役：いま配信者へ送っているチャレンジの乱数（返事の照合用）
   ownerAuthAt: 0,       // 聞き役：最後にチャレンジを送った時刻（取りこぼし時の再送を間引く）
   ownerHold: null,      // 聞き役：本人確認より先に届いた配信者枠の音 {id, ms, sid}。確認が取れたら載せる・取れなければ載らないまま消える
+  ownerAuthSince: 0,    // 聞き役：いまの配信者（の接続）に最初のチャレンジを送った時刻。AUTH_GRACE_MS たっても取れなければ「不在」扱い（終了カウントへ）
   authAction: null,     // 配信者の本人確認（チャレンジ&レスポンス）のデータチャネル（v0.15.28）
   authAskAt: new Map(), // 配信者：peerId → 最後に本人確認の署名に応じた時刻（連打で署名を走らされない）
   bcEnd: null,          // 聞き役側の「配信の終わり」の状態 { phase:'grace'|'ending', since, endAt }（v0.14.0）
@@ -4766,6 +4767,7 @@ const challengeOwner = (force = false) => {
   if (!force && Date.now() - call.ownerAuthAt < AUTH_RETRY_MS) return   // 取りこぼし時の再送は間引く
   const n = b64u(crypto.getRandomValues(new Uint8Array(16)))
   call.ownerNonce = n; call.ownerAuthAt = Date.now()
+  if (!call.ownerAuthSince) call.ownerAuthSince = call.ownerAuthAt   // この接続への最初のチャレンジ（ownerPresent の猶予の起点）
   sendTo(call.authAction, { k: 'q', n }, own)
 }
 // 本人確認が取れた瞬間に、配信者の分として取り置いていた合図を当て、確認前に捨てた音を取り直す。
@@ -4809,7 +4811,7 @@ const acceptRoster = async d => {
   call.roster = { pk: pub, t, o: own, ids, sig }
   // ★配信者（の peerId）が変わったら本人確認をやり直す（v0.15.28）。名簿が本物でも、いまその peerId を
   //   名乗っている接続が本人とは限らない。確認が済むまで前の配信者の読み上げ案内も引きずらない。
-  if (!call.ownerKey && ownerChanged) { call.ownerAuthed = ''; call.ttsAnn = null; call.ownerHold = null }
+  if (!call.ownerKey && ownerChanged) { call.ownerAuthed = ''; call.ttsAnn = null; call.ownerHold = null; call.ownerAuthSince = 0 }
   setSpeakers(ids)
   if (!call.ownerKey && own) challengeOwner(ownerChanged)   // 本人確認のチャレンジを送る（済みなら何もしない）
   // ★取り置き（募集中・読み上げ案内）の適用と BGM の採用は**本人確認が取れてから**（onOwnerAuthed）。
@@ -4865,7 +4867,15 @@ const toggleGrant = id => {
 // 15 秒後にロビーへ送る。放置されたタブの掃除を兼ねる。「終わった配信は終わる」（設計方針）。
 // 配信者の在否は**名簿に書かれた配信者の peerId が接続にいるか**で見る（自己申告ではない）。
 const BC_GRACE_MS = 60000, BC_BYE_MS = 15000
-const ownerPresent = () => !!(call.ownerPeer && call.peers.has(call.ownerPeer))
+// ★v0.15.28：接続があるだけでは足りない。本人確認（oath）が AUTH_GRACE_MS たっても取れない接続は「不在」と
+//   見なして終了カウントへ回す（配信者を名乗る別人が居座っても部屋が終わる／旧版の配信者で声が出ない端境期にも
+//   理由が出る）。参加直後は猶予の中なのでちらつかない。
+const AUTH_GRACE_MS = 10000
+const ownerPresent = () => {
+  if (!call.ownerPeer || !call.peers.has(call.ownerPeer)) return false
+  if (call.ownerAuthed === call.ownerPeer) return true
+  return !call.ownerAuthSince || Date.now() - call.ownerAuthSince < AUTH_GRACE_MS
+}
 const bcEndTick = () => {
   if (!call.joinedId || !call.bcast || call.ownerKey) return
   challengeOwner()   // 本人確認のチャレンジが取りこぼされていたら送り直す（済み／配信者不在なら何もしない・v0.15.28）
@@ -4890,8 +4900,12 @@ const renderBcNote = () => {
   const e = call.bcEnd
   if (e && !call.ownerKey) {
     const left = Math.max(0, Math.ceil((e.phase === 'grace' ? e.since + BC_GRACE_MS - Date.now() : e.endAt - Date.now()) / 1000))
+    // 接続はあるのに本人確認が取れない（AUTH_GRACE_MS 超え）＝旧版の配信者か、配信者を名乗る別の人（v0.15.28）
+    const unverified = call.ownerPeer && call.peers.has(call.ownerPeer) && call.ownerAuthed !== call.ownerPeer
     txt = e.phase === 'grace'
-      ? '📣 配信者の接続が切れました。戻るのを待っています（あと ' + left + ' 秒）'
+      ? (unverified
+        ? '📣 配信者の本人確認ができません。配信者のページが古いか、配信者を名乗る別の人かもしれません（あと ' + left + ' 秒で終了）'
+        : '📣 配信者の接続が切れました。戻るのを待っています（あと ' + left + ' 秒）')
       : '📣 配信が終了しました。' + left + ' 秒後に「通話中の部屋」へ戻ります'
   } else {
     txt = call.ownerKey
@@ -5535,6 +5549,8 @@ const wireRoom = () => {
     call.ttsSent.delete(id); call.ttsSentStream.delete(id); call.ttsResentAt.delete(id)   // 読み上げを配った記録（入り直せば別 ID＝改めて {ok} を待つ）
     if (id === call.ownerPeer && call.ttsAnn) { call.ttsAnn = null; call.ttsTrackIds.clear(); dropAudios('tts'); removeAnalyser('tts') }   // 配信者が抜けた＝仮想行も畳む
     if (id === call.ownerAuthed) { call.ownerAuthed = ''; call.ownerNonce = '' }   // 本人確認済みの配信者が抜けた＝同じ peerId を名乗る別人が来ても必ず確認し直す（v0.15.28）
+    if (id === call.ownerPeer) call.ownerAuthSince = 0   // 次の接続には改めて猶予を与える
+    call.authAskAt.delete(id)                            // 配信者側：本人確認の署名に応じた記録も捨てる
     if (call.ownerHold && call.ownerHold.id === id) call.ownerHold = null   // 取り置いていた音も捨てる
     // 登壇の許可も同じ理由で持ち越さない（入り直した人は別の peerId＝改めて許可し直す）。
     // オーナーは原本から消すが、**名簿を配り直さない**：残った人の許可は変わらないので、
