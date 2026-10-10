@@ -2224,8 +2224,12 @@ const SHARE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>'
 const copyRoomUrl = async (el, id, name) => {
   const url = roomUrl(id, name)
+  // 招待リンクのコピー（shareText）と同じ形＝**「部屋名 - 名前」＋改行＋URL**（v0.15.29・利用者の要望）。
+  // SNS に貼ったとき何の部屋か・誰からかが見える。名前はコピーする本人（招待と同じ）。配信部屋は 📣、それ以外は 🫖
+  const who = (profile.name || '').trim() || 'ゲスト'
+  const text = (isBcRoom(id) ? '📣 ' : '🫖 ') + ((name || '').trim() || '部屋') + ' - ' + who + '\n' + url
   try {
-    await navigator.clipboard.writeText(url)
+    await navigator.clipboard.writeText(text)
     el.innerHTML = CHECK_SVG
     el.classList.add('copied')
     el.setAttribute('title', 'コピーしました ✓')
@@ -2233,7 +2237,7 @@ const copyRoomUrl = async (el, id, name) => {
     el._revert = setTimeout(() => {
       el.innerHTML = SHARE_SVG
       el.classList.remove('copied')
-      el.setAttribute('title', '部屋のリンクをコピー')
+      el.setAttribute('title', '部屋名とリンクをコピー')
     }, 1600)
   } catch {
     prompt('部屋のリンクです（長押しでコピー）:', url)
@@ -6368,8 +6372,8 @@ const renderLobby = () => {
     sh.className = 'room-share'
     sh.setAttribute('role', 'button')
     sh.setAttribute('tabindex', '0')
-    sh.setAttribute('title', '部屋のリンクをコピー')
-    sh.setAttribute('aria-label', '部屋のリンクをコピー')
+    sh.setAttribute('title', '部屋名とリンクをコピー')
+    sh.setAttribute('aria-label', '部屋名とリンクをコピー')
     sh.innerHTML = SHARE_SVG
     sh.onclick = e => { e.stopPropagation(); copyRoomUrl(sh, room, lobbyName(room, people)) }
     sh.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyRoomUrl(sh, room, lobbyName(room, people)) } }

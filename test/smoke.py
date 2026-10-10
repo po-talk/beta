@@ -1430,9 +1430,24 @@ def T54(r, room):
     t.wait_for("__T.clip.length >= 3", timeout=SHORT)
     link_only = t.eval("__T.clip[2]") == url and t.eval("location.hash") == before_hash
     told = 'URL をコピーしました' in (t.eval("document.getElementById('shareLabel').textContent") or '')
-    ok = fmt and labeled and top and link_only and told
-    r.check('T54', '招待リンクのコピーは「部屋名 - 名前」＋URL（リンクのタップは URL だけ）', ok, 'pass',
-            '形=%s(%r) / ボタンの文言=%s / バナーは URL だけ=%s / リンクのタップは URL だけ=%s / 案内=%s' % (fmt, txt[:60], labeled, top, link_only, told))
+    # ★ロビーの部屋カードの共有ボタンも同じ形（v0.15.29・利用者の要望）：別タブ c のロビーに t の部屋が出たら押す。
+    #   名前はコピーする本人（c）の名前。URL は t の共有リンクと同じ
+    c = r.open_tab()
+    c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    CARD = "[...document.querySelectorAll('#lobbyList .room')].find(b => b.textContent.includes(%s))" % js_str(x)
+    card = c.wait_for("!!" + CARD, timeout=DISCOVER)
+    card_txt = ''
+    if card:
+        c.eval(CARD + ".querySelector('.room-share').click()", await_promise=False)
+        c.wait_for("__T.clip.length >= 1", timeout=SHORT)
+        card_txt = c.eval("__T.clip[0]") or ''
+    who_c = c.eval("document.getElementById('name').value") or 'ゲスト'
+    cl = card_txt.split('\n')
+    card_fmt = bool(card) and len(cl) == 2 and cl[0] == '🫖 ' + x + ' - ' + who_c and cl[1] == url
+    ok = fmt and labeled and top and link_only and told and card_fmt
+    r.check('T54', '招待リンクのコピーは「部屋名 - 名前」＋URL（リンクのタップは URL だけ・ロビーのカードも同じ形）', ok, 'pass',
+            '形=%s(%r) / ボタンの文言=%s / バナーは URL だけ=%s / リンクのタップは URL だけ=%s / 案内=%s / ロビーのカード=%s(%r)'
+            % (fmt, txt[:60], labeled, top, link_only, told, card_fmt, card_txt[:60]))
     click_leave(t)
 
 
