@@ -2111,6 +2111,71 @@ def T71(r, room):
     click_leave(o)
 
 
+def T72(r, room):
+    """プロフィールカード（名刺交換機能・v0.16.0）：
+    通話相手のアバター/名前タップでモーダル展開、相手へP2P要求（action 'card'）、
+    相手の名刺（自己紹介・認証済みSNS・チップ）が表示されること。
+    自衛ボタン（非表示＆消音）で即座に相手が無視され、ダイアログが閉じること。
+    """
+    name = room + 'CARD'
+    a, b = r.open_tab(), r.open_tab()
+    # タブBに名刺データを設定
+    b.eval("""(() => {
+        const card = {
+            bio: 'テスト自己紹介',
+            tip: { p: 'ofuse', id: 'sampleuser' },
+            socials: { x: 'test_x_user', note: 'test_note' },
+            verified: { x: true }
+        };
+        localStorage.setItem('pot-call-card', JSON.stringify(card));
+    })()""")
+    r.join(a, name)
+    r.join(b, name)
+    joined = (a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and
+              b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER))
+
+    # タブAでメンバー一覧内の相手（.you を持たない行）のアバターまたは名前をクリック
+    opened = a.eval("""(() => {
+        const row = [...document.querySelectorAll('#members .member')].find(el => !el.querySelector('.you'));
+        if (!row) return false;
+        const tap = row.querySelector('.m-tap');
+        if (!tap) return false;
+        tap.click();
+        return true;
+    })()""")
+    dlg_open = a.wait_for("document.getElementById('cardDlg').open", timeout=SHORT)
+
+    # 相手の名刺データが届いて反映されるのを待つ
+    bio_ok = a.wait_for("document.getElementById('cdBio').textContent === 'テスト自己紹介'", timeout=SHORT)
+    tip_ok = a.eval("document.getElementById('cdTipSub').textContent.includes('sampleuser')")
+    x_badge = a.eval("""(() => {
+        const ok = document.querySelector('#cdSocials .cd-ok');
+        return ok && ok.textContent.includes('✅');
+    })()""")
+    un_badge = a.eval("""(() => {
+        const un = document.querySelector('#cdSocials .cd-un');
+        return un && un.textContent.includes('未認証');
+    })()""")
+
+    # 自衛ボタン（#cdIgnore）をクリック
+    ignored = a.eval("""(() => {
+        const btn = document.getElementById('cdIgnore');
+        if (!btn || btn.hidden) return false;
+        btn.click();
+        return true;
+    })()""")
+    dlg_closed = a.wait_for("!document.getElementById('cardDlg').open", timeout=SHORT)
+
+    # タブAでタブBが無視されたか確認（メンバー行に .ignored が付く）
+    peer_ignored = a.wait_for("document.querySelectorAll('#members .member.ignored').length === 1", timeout=SHORT)
+
+    ok = bool(joined and opened and dlg_open and bio_ok and tip_ok and x_badge and un_badge and ignored and dlg_closed and peer_ignored)
+    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/認証/Tip)・自衛ボタンで無視連動', ok, 'pass',
+            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / 認証バッジ=%s / 未認証バッジ=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
+            % (joined, opened, dlg_open, bio_ok, tip_ok, x_badge, un_badge, ignored, dlg_closed, peer_ignored))
+    click_leave(a); click_leave(b)
+
+
 def T70(r):
     """配信者の本人確認（oath・v0.15.28）：配信者が抜けた後に同じ peerId を名乗る改造クライアントが来ても、
     新入りはそれを配信者として扱わない（📣 なし・配信者専用のおたより非表示・音 0）。正規の聞き役は従来どおり 📣。
@@ -3104,6 +3169,8 @@ def main():
             T71(r, room)
         if run('T71b'):
             T71b(r, room)
+        if run('T72'):
+            T72(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
