@@ -257,7 +257,8 @@
   .ce-row .ce-name{ flex:none; width:7.5em; font-size:13px; color:var(--body) }
   .ce-row input[type=text]{ flex:1; min-width:0; padding:8px 10px; font-size:16px }
   .ce-row input[type=radio]{ flex:none; width:auto; margin:0; accent-color:var(--accent) }
-  .ce-row.bad input[type=text]{ border-color:var(--warn) }
+  .ce-row.bad input[type=text], .ce-row input[type=text].is-bad{ border-color:var(--warn) !important; background:var(--warn-bg) !important }
+  .ce-warn-text{ color:var(--warn); font-size:12.5px; margin:8px 0 0; line-height:1.5 }
   .ce-row .ce-ok{ flex:none; width:1.5em; text-align:center; font-size:13px }
   .ce-none{ display:flex; align-items:center; gap:8px; margin:6px 0; font-size:13px; color:var(--sub); cursor:pointer }
   .ce-none input{ width:auto; margin:0; accent-color:var(--accent) }
@@ -1454,60 +1455,62 @@
   <div class="ce-row">
     <input type="radio" name="ceTipOpt" value="ofuse" id="ceTipR_ofuse">
     <span class="ce-name">☕ OFUSE</span>
-    <input type="text" id="ceTip_ofuse" placeholder="ユーザID（英数字_）" autocomplete="off" maxlength="30">
+    <input type="text" id="ceTip_ofuse" placeholder="URL または ユーザID" autocomplete="off" maxlength="100">
   </div>
   <div class="ce-row">
     <input type="radio" name="ceTipOpt" value="amazon" id="ceTipR_amazon">
     <span class="ce-name">📦 ほしい物リスト</span>
-    <input type="text" id="ceTip_amazon" placeholder="リストIDまたは短縮URL" autocomplete="off" maxlength="120">
+    <input type="text" id="ceTip_amazon" placeholder="URL または リストID" autocomplete="off" maxlength="200">
   </div>
   <div class="ce-row">
     <input type="radio" name="ceTipOpt" value="zap" id="ceTipR_zap">
     <span class="ce-name">⚡ Nostr Zap</span>
-    <input type="text" id="ceTip_zap" placeholder="name@domain または npub" autocomplete="off" maxlength="64">
+    <input type="text" id="ceTip_zap" placeholder="name@domain または npub" autocomplete="off" maxlength="100">
   </div>
   <div class="ce-row">
     <input type="radio" name="ceTipOpt" value="kofi" id="ceTipR_kofi">
     <span class="ce-name">☕ Ko-fi</span>
-    <input type="text" id="ceTip_kofi" placeholder="ユーザ名" autocomplete="off" maxlength="30">
+    <input type="text" id="ceTip_kofi" placeholder="URL または ユーザ名" autocomplete="off" maxlength="100">
   </div>
   <div class="ce-row">
     <input type="radio" name="ceTipOpt" value="bmac" id="ceTipR_bmac">
     <span class="ce-name">🥐 Buy Me Coffee</span>
-    <input type="text" id="ceTip_bmac" placeholder="ユーザ名" autocomplete="off" maxlength="30">
+    <input type="text" id="ceTip_bmac" placeholder="URL または ユーザ名" autocomplete="off" maxlength="100">
   </div>
-  <p class="ce-note">※ Amazonほしい物リストは配送先の本名や住所バレにご注意ください。</p>
+  <p class="ce-note">※ Amazonほしい物リストは配送先の本名や住所バレにご注意ください。<br>※ URLを貼ると自動でIDに切り詰めます（形式不一致は赤枠）。</p>
 
   <label class="ce-lbl">SNS ID（オプトイン本人確認対応）</label>
   <div class="ce-row">
     <span class="ce-name">𝕏 (Twitter)</span>
-    <input type="text" id="ceSns_x" placeholder="@なしのID" autocomplete="off" maxlength="15">
+    <input type="text" id="ceSns_x" placeholder="URL または @ID" autocomplete="off" maxlength="100">
     <button class="ce-ver-btn" id="ceBtnVer_x" type="button" title="本人確認を行う">認証</button>
     <span class="ce-ver-badge" id="ceVerBadge_x" title="認証済み（タップで解除）" hidden>✅</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">🐙 GitHub</span>
-    <input type="text" id="ceSns_github" placeholder="ユーザ名" autocomplete="off" maxlength="39">
+    <input type="text" id="ceSns_github" placeholder="URL または ユーザ名" autocomplete="off" maxlength="100">
     <button class="ce-ver-btn" id="ceBtnVer_github" type="button" title="本人確認を行う">認証</button>
     <span class="ce-ver-badge" id="ceVerBadge_github" title="認証済み（タップで解除）" hidden>✅</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">📝 note</span>
-    <input type="text" id="ceSns_note" placeholder="クリエイター名" autocomplete="off" maxlength="32">
+    <input type="text" id="ceSns_note" placeholder="URL または クリエイター名" autocomplete="off" maxlength="100">
     <span class="ce-un-badge" title="自己申告リンク">自己申告</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">📸 Instagram</span>
-    <input type="text" id="ceSns_instagram" placeholder="ユーザ名（自己申告）" autocomplete="off" maxlength="30">
+    <input type="text" id="ceSns_instagram" placeholder="URL または ユーザ名" autocomplete="off" maxlength="100">
     <span class="ce-un-badge" title="自己申告リンク">自己申告</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">🟣 Nostr</span>
-    <input type="text" id="ceSns_nostr" placeholder="npub1..." autocomplete="off" maxlength="64">
+    <input type="text" id="ceSns_nostr" placeholder="URL または npub1..." autocomplete="off" maxlength="100">
     <button class="ce-ver-btn" id="ceBtnVer_nostr" type="button" title="拡張機能で本人確認">認証</button>
     <span class="ce-ver-badge" id="ceVerBadge_nostr" title="認証済み（タップで解除）" hidden>✅</span>
   </div>
-  <p class="ce-note">※ IDを入れるだけで手軽に掲載できます。「認証」を押して本人確認コードを検証すると ✅ 認証バッジが灯ります。</p>
+  <p class="ce-note">※ 各サービスのプロフィールURLを貼ると自動でIDに切り詰めます。「認証」を押して本人確認すると ✅ バッジが点灯します。</p>
+
+  <p id="ceWarn" class="ce-warn-text" hidden></p>
 
   <div class="ce-actions">
     <button id="ceSave" type="button">保存する</button>
@@ -2325,23 +2328,112 @@ const saveCard = c => lsSet(CARD_KEY, JSON.stringify(c))
 
 // SNS 定義（ID ホワイトリスト方式・URL 自由入力を排除して XSS/フィッシング防止）
 const SNS_DEFS = {
-  x: { name: '𝕏', re: /^[a-zA-Z0-9_]{1,15}$/, url: id => 'https://x.com/' + id },
-  github: { name: 'GitHub', re: /^[a-zA-Z0-9-]{1,39}$/, url: id => 'https://github.com/' + id },
-  note: { name: 'note', re: /^[a-zA-Z0-9_]{3,32}$/, url: id => 'https://note.com/' + id },
-  instagram: { name: 'Instagram', re: /^[a-zA-Z0-9._]{1,30}$/, url: id => 'https://www.instagram.com/' + id + '/' },
-  nostr: { name: 'Nostr', re: /^npub1[0-9a-z]{58}$/, url: id => 'https://njump.me/' + id }
+  x: {
+    name: '𝕏', re: /^[a-zA-Z0-9_]{1,15}$/,
+    parse: s => {
+      s = s.trim().replace(/^@/, '')
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?(?:x|twitter)\.com\/([a-zA-Z0-9_]{1,15})(?:\/|\?|$)/i)
+      if (m) return m[1]
+      return /^[a-zA-Z0-9_]{1,15}$/.test(s) ? s : null
+    },
+    url: id => 'https://x.com/' + id
+  },
+  github: {
+    name: 'GitHub', re: /^[a-zA-Z0-9-]{1,39}$/,
+    parse: s => {
+      s = s.trim().replace(/^@/, '')
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9-]{1,39})(?:\/|\?|$)/i)
+      if (m) return m[1]
+      return /^[a-zA-Z0-9-]{1,39}$/.test(s) ? s : null
+    },
+    url: id => 'https://github.com/' + id
+  },
+  note: {
+    name: 'note', re: /^[a-zA-Z0-9_]{3,32}$/,
+    parse: s => {
+      s = s.trim()
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?note\.com\/([a-zA-Z0-9_]{3,32})(?:\/|\?|$)/i)
+      if (m) return m[1]
+      return /^[a-zA-Z0-9_]{3,32}$/.test(s) ? s : null
+    },
+    url: id => 'https://note.com/' + id
+  },
+  instagram: {
+    name: 'Instagram', re: /^[a-zA-Z0-9._]{1,30}$/,
+    parse: s => {
+      s = s.trim().replace(/^@/, '')
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([a-zA-Z0-9._]{1,30})(?:\/|\?|$)/i)
+      if (m) return m[1]
+      return /^[a-zA-Z0-9._]{1,30}$/.test(s) ? s : null
+    },
+    url: id => 'https://www.instagram.com/' + id + '/'
+  },
+  nostr: {
+    name: 'Nostr', re: /^npub1[0-9a-z]{58}$/,
+    parse: s => {
+      s = s.trim().replace(/^nostr:/i, '')
+      const m = s.match(/npub1[0-9a-z]{58}/i)
+      return m ? m[0].toLowerCase() : null
+    },
+    url: id => 'https://njump.me/' + id
+  }
 }
 // お礼・チップ窓口定義
 const TIP_DEFS = {
-  ofuse: { name: 'OFUSE', label: '☕ OFUSE でお礼', re: /^[a-zA-Z0-9_]{1,30}$/, url: id => 'https://ofuse.me/users/' + id },
+  ofuse: {
+    name: 'OFUSE', label: '☕ OFUSE でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
+    parse: s => {
+      s = s.trim()
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?ofuse\.me\/(?:users\/)?([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i)
+      if (m) return m[1]
+      return /^[a-zA-Z0-9_]{1,30}$/.test(s) ? s : null
+    },
+    url: id => 'https://ofuse.me/' + id
+  },
   amazon: {
     name: 'Amazon ほしい物リスト', label: '📦 ほしい物リストでお礼',
-    re: /^[a-zA-Z0-9_.~:/?#[\]@!$&'()*+,;=-]{5,150}$/,
-    url: id => id.startsWith('http') ? id : 'https://www.amazon.jp/hz/wishlist/ls/' + id
+    re: /^[a-zA-Z0-9]{10,20}$|^https:\/\/amzn\.(?:asia|to)\/[a-zA-Z0-9_/-]+$/,
+    parse: s => {
+      s = s.trim()
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?amazon\.(?:co\.jp|jp|com)\/hz\/wishlist\/ls\/([a-zA-Z0-9]{10,20})/i)
+      if (m) return m[1]
+      const mShort = s.match(/^https?:\/\/(amzn\.(?:asia|to)\/[a-zA-Z0-9_/-]+?)(?:\?.*)?$/i)
+      if (mShort) return 'https://' + mShort[1]
+      return /^[a-zA-Z0-9]{10,20}$/.test(s) ? s : null
+    },
+    url: id => id.startsWith('http') ? id : 'https://www.amazon.co.jp/hz/wishlist/ls/' + id
   },
-  zap: { name: 'Nostr Zap', label: '⚡ Zap でお礼 (Sats)', re: /^[a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+$|^npub1[0-9a-z]{58}$/, url: id => 'lightning:' + id },
-  kofi: { name: 'Ko-fi', label: '☕ Ko-fi でお礼', re: /^[a-zA-Z0-9_]{1,30}$/, url: id => 'https://ko-fi.com/' + id },
-  bmac: { name: 'Buy Me a Coffee', label: '🥐 Buy Me Coffee でお礼', re: /^[a-zA-Z0-9_]{1,30}$/, url: id => 'https://buymeacoffee.com/' + id }
+  zap: {
+    name: 'Nostr Zap', label: '⚡ Zap でお礼 (Sats)',
+    re: /^[a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+$|^npub1[0-9a-z]{58}$/,
+    parse: s => {
+      s = s.trim().replace(/^lightning:/i, '').replace(/^nostr:/i, '')
+      if (/^[a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+$/.test(s)) return s
+      const m = s.match(/npub1[0-9a-z]{58}/i)
+      return m ? m[0].toLowerCase() : null
+    },
+    url: id => 'lightning:' + id
+  },
+  kofi: {
+    name: 'Ko-fi', label: '☕ Ko-fi でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
+    parse: s => {
+      s = s.trim()
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?ko-fi\.com\/([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i)
+      if (m) return m[1]
+      return /^[a-zA-Z0-9_]{1,30}$/.test(s) ? s : null
+    },
+    url: id => 'https://ko-fi.com/' + id
+  },
+  bmac: {
+    name: 'Buy Me a Coffee', label: '🥐 Buy Me Coffee でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
+    parse: s => {
+      s = s.trim()
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?buymeacoffee\.com\/([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i)
+      if (m) return m[1]
+      return /^[a-zA-Z0-9_]{1,30}$/.test(s) ? s : null
+    },
+    url: id => 'https://buymeacoffee.com/' + id
+  }
 }
 
 // 受け取った名刺データの検証（改造クライアント対策）
@@ -2557,8 +2649,30 @@ const syncVerUi = () => {
   }
 }
 
+const handleAutoTrim = (el, def) => {
+  if (!el || !def?.parse) return ''
+  const raw = el.value.trim()
+  if (!raw) {
+    el.classList.remove('is-bad')
+    return ''
+  }
+  const parsed = def.parse(raw)
+  if (parsed) {
+    if (el.value !== parsed) el.value = parsed
+    el.classList.remove('is-bad')
+    return parsed
+  } else {
+    el.classList.add('is-bad')
+    return null
+  }
+}
+
 const openCardEdit = () => {
   const c = loadCard()
+  $('ceWarn').hidden = true
+  $('ceWarn').textContent = ''
+  document.querySelectorAll('#cardEditDlg input[type=text]').forEach(el => el.classList.remove('is-bad'))
+
   $('ceBio').value = c.bio || ''
   syncBioCount()
   const tip = c.tip || {}
@@ -2582,10 +2696,34 @@ $('btnOpenCardEdit').onclick = openCardEdit
 $('ceClose').onclick = () => { $('cardEditDlg').close() }
 $('ceCancel').onclick = () => { $('cardEditDlg').close() }
 
-// 入力値が変わったら認証状態を同期
-for (const k of ['x', 'github', 'nostr']) {
+// チップ入力欄の自動切り詰め・ラジオボタン連動
+for (const [k, def] of Object.entries(TIP_DEFS)) {
+  const el = $('ceTip_' + k)
+  if (!el) continue
+  const onUpdate = () => {
+    handleAutoTrim(el, def)
+    if (el.value.trim()) {
+      const radio = $('ceTipR_' + k)
+      if (radio && !radio.checked) radio.checked = true
+    }
+  }
+  el.oninput = onUpdate
+  el.onchange = onUpdate
+  el.onpaste = () => setTimeout(onUpdate, 10)
+}
+
+// SNS入力欄の自動切り詰め・認証状態同期
+for (const [k, def] of Object.entries(SNS_DEFS)) {
   const el = $('ceSns_' + k)
-  if (el) el.oninput = syncVerUi
+  if (!el) continue
+  const onUpdate = () => {
+    handleAutoTrim(el, def)
+    syncVerUi()
+  }
+  el.oninput = onUpdate
+  el.onchange = onUpdate
+  el.onpaste = () => setTimeout(onUpdate, 10)
+
   const badge = $('ceVerBadge_' + k)
   if (badge) {
     badge.onclick = () => {
@@ -2749,31 +2887,69 @@ $('caVerifyBtn').onclick = async () => {
 }
 
 $('ceSave').onclick = () => {
+  $('ceWarn').hidden = true
+  $('ceWarn').textContent = ''
+
   const bio = capText($('ceBio').value.trim(), 60)
   let selTip = 'none'
   const tipRadios = document.getElementsByName('ceTipOpt')
   for (const r of tipRadios) { if (r.checked) selTip = r.value }
 
-  const savedTips = {
-    ofuse: $('ceTip_ofuse').value.trim(),
-    amazon: $('ceTip_amazon').value.trim(),
-    zap: $('ceTip_zap').value.trim(),
-    kofi: $('ceTip_kofi').value.trim(),
-    bmac: $('ceTip_bmac').value.trim()
-  }
-
-  let tip = null
-  if (selTip !== 'none') {
-    const id = savedTips[selTip]
-    if (id && TIP_DEFS[selTip]?.re.test(id)) {
-      tip = { p: selTip, id }
+  // 各チップ入力欄の最終トリム
+  const savedTips = {}
+  for (const [k, def] of Object.entries(TIP_DEFS)) {
+    const el = $('ceTip_' + k)
+    const raw = el ? el.value.trim() : ''
+    if (raw) {
+      const parsed = def.parse(raw)
+      if (parsed) {
+        savedTips[k] = parsed
+        el.value = parsed
+        el.classList.remove('is-bad')
+      } else {
+        savedTips[k] = raw
+        el.classList.add('is-bad')
+      }
+    } else {
+      savedTips[k] = ''
+      if (el) el.classList.remove('is-bad')
     }
   }
 
+  // 選択されたチップのチェック
+  let tip = null
+  if (selTip !== 'none') {
+    const id = savedTips[selTip]
+    const def = TIP_DEFS[selTip]
+    if (!id || !def || !def.re.test(id)) {
+      $('ceWarn').textContent = '⚠️ 選択したお礼窓口（' + (def?.name || selTip) + '）のURLまたはIDが正しくありません'
+      $('ceWarn').hidden = false
+      $('ceTip_' + selTip)?.focus()
+      return
+    }
+    tip = { p: selTip, id }
+  }
+
+  // SNS の最終トリムとチェック
   const socials = {}
-  for (const k of ['x', 'github', 'note', 'instagram', 'nostr']) {
-    const val = $('ceSns_' + k).value.trim()
-    if (val && SNS_DEFS[k]?.re.test(val)) socials[k] = val
+  for (const [k, def] of Object.entries(SNS_DEFS)) {
+    const el = $('ceSns_' + k)
+    const raw = el ? el.value.trim() : ''
+    if (!raw) {
+      if (el) el.classList.remove('is-bad')
+      continue
+    }
+    const parsed = def.parse(raw)
+    if (!parsed || !def.re.test(parsed)) {
+      if (el) el.classList.add('is-bad')
+      $('ceWarn').textContent = '⚠️ ' + def.name + ' のURLまたはIDの形式が正しくありません'
+      $('ceWarn').hidden = false
+      el?.focus()
+      return
+    }
+    el.value = parsed
+    el.classList.remove('is-bad')
+    socials[k] = parsed
   }
 
   const prev = loadCard()
