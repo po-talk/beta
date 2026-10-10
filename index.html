@@ -240,11 +240,12 @@
   .help-dialog p.cd-tip-note{ margin:6px 0 0; font-size:12px; color:var(--note); line-height:1.5 }
   .cd-sec{ margin:10px 0 6px; font-size:12px; font-weight:700; color:var(--sub) }
   .cd-socials{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px }
-  .cd-sns{ display:inline-flex; align-items:center; gap:6px; width:auto; margin:0; padding:7px 12px; border-radius:10px; font-size:13px; font-weight:600;
+  .cd-sns{ display:inline-flex; align-items:center; gap:6px; max-width:100%; box-sizing:border-box; width:auto; margin:0; padding:7px 12px; border-radius:10px; font-size:13px; font-weight:600;
     background:var(--chip); color:var(--text) !important; border:1px solid var(--border-soft); text-decoration:none; cursor:pointer }
   .cd-sns:hover{ background:var(--chip-hover) }
-  .cd-sns .cd-ok{ font-size:12px; color:var(--link) }
-  .cd-sns .cd-un{ font-size:11px; font-weight:400; color:var(--note); background:var(--card); padding:1px 5px; border-radius:4px }
+  .cd-sns .cd-id{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .cd-sns .cd-ok{ font-size:12px; color:var(--link); flex:none }
+  .cd-sns .cd-un{ font-size:11px; font-weight:400; color:var(--note); background:var(--card); padding:1px 5px; border-radius:4px; flex:none }
   .cd-warn{ border:1px solid var(--warn-border); background:var(--warn-bg); border-radius:12px; padding:12px; margin:0 0 12px }
   .help-dialog .cd-warn p{ margin:0 0 10px; font-size:13px; color:var(--text) }
   .cd-warn-actions{ display:flex; gap:8px }
@@ -2531,6 +2532,14 @@ const myCardPayload = () => {
   return p
 }
 
+// Nostr npub 短縮ヘルパー（例: npub1exu6…3ymj8）
+const shortenNpub = s => {
+  if (typeof s === 'string' && s.startsWith('npub1') && s.length === 63) {
+    return s.slice(0, 9) + '…' + s.slice(-5)
+  }
+  return s
+}
+
 // 名刺ダイアログ（閲覧）の描画
 const renderCardView = (uid, cardData) => {
   const you = uid === 'self'
@@ -2564,7 +2573,7 @@ const renderCardView = (uid, cardData) => {
     $('cdTip').hidden = false
     $('cdTipLink').textContent = tipDef.label
     $('cdTipLink').href = tipDef.url(tip.id)
-    $('cdTipSub').textContent = tipDef.name + ': ' + tip.id
+    $('cdTipSub').textContent = tipDef.name + ': ' + shortenNpub(tip.id)
   } else {
     $('cdTip').hidden = true
   }
@@ -2589,7 +2598,8 @@ const renderCardView = (uid, cardData) => {
     sName.textContent = def.name
     const sId = document.createElement('span')
     sId.className = 'cd-id'
-    sId.textContent = (k === 'x' ? '@' : '') + id
+    sId.textContent = (k === 'x' ? '@' : '') + shortenNpub(id)
+    sId.title = id
     const sBadge = document.createElement('span')
     sBadge.className = isVer ? 'cd-ok' : 'cd-un'
     sBadge.textContent = isVer ? '✅' : '未認証'
@@ -2644,7 +2654,7 @@ $('cdEditBtn').onclick = () => { $('cardDlg').close(); openCardEdit() }
 // 未認証リンク注意モーダル
 const openCardWarn = (serviceName, id, url) => {
   $('cdWarnTitle').textContent = '⚠️ 未検証の ' + serviceName + ' です'
-  $('cdWarnMsg').textContent = 'このリンク (' + id + ') は本人が所有しているか未検証です。なりすましにご注意ください。'
+  $('cdWarnMsg').textContent = 'このリンク (' + shortenNpub(id) + ') は本人が所有しているか未検証です。なりすましにご注意ください。'
   $('cdWarnGo').href = url
   $('cdWarnGo').onclick = () => { try { $('cardWarnDlg').close() } catch {} }
   try { $('cardWarnDlg').showModal() } catch { window.open(url, '_blank', 'noopener,noreferrer') }
@@ -2913,7 +2923,7 @@ const openCardAuth = service => {
     $('caNote').textContent = '※ 投稿後、そのポストのリンク（共有URL）を下に貼って「確認する」を押してください。認証完了後はポストを残しても削除してもどちらでも構いません。'
   } else if (service === 'nostr') {
     $('caTitle').textContent = '🟣 Nostr 本人確認'
-    $('caAccount').textContent = '対象: ' + id.slice(0, 16) + '...'
+    $('caAccount').textContent = '対象: ' + shortenNpub(id)
     $('caDesc').textContent = 'ブラウザの NIP-07 拡張機能（nos2x, Alby 等）を使用して、この npub の秘密鍵を所有していることを確認します。'
     $('caCodeSec').hidden = true
     $('caXPostSec').hidden = true
