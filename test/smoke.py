@@ -1441,14 +1441,48 @@ def T54(r, room):
         c.eval(CARD + ".querySelector('.room-share').click()", await_promise=False)
         c.wait_for("__T.clip.length >= 1", timeout=SHORT)
         card_txt = c.eval("__T.clip[0]") or ''
-    who_c = c.eval("document.getElementById('name').value") or 'ゲスト'
+    # 名前の欄は在室者（v0.15.30）：いま部屋にいるのは t だけなので t の名前（コピーした c の名前ではない）
     cl = card_txt.split('\n')
-    card_fmt = bool(card) and len(cl) == 2 and cl[0] == '🫖 ' + x + ' - ' + who_c and cl[1] == url
-    ok = fmt and labeled and top and link_only and told and card_fmt
-    r.check('T54', '招待リンクのコピーは「部屋名 - 名前」＋URL（リンクのタップは URL だけ・ロビーのカードも同じ形）', ok, 'pass',
-            '形=%s(%r) / ボタンの文言=%s / バナーは URL だけ=%s / リンクのタップは URL だけ=%s / 案内=%s / ロビーのカード=%s(%r)'
-            % (fmt, txt[:60], labeled, top, link_only, told, card_fmt, card_txt[:60]))
-    click_leave(t)
+    card_fmt = bool(card) and len(cl) == 2 and cl[0] == '🫖 ' + x + ' - ' + who and cl[1] == url
+    # ★雑談部屋は在室者の羅列（v0.15.30）：c も入ると t の招待リンクは「t、c」
+    # ★部屋名ではなく t のリンクで入る（部屋の実体はハッシュ。同名でも別の部屋になる）。同じタブのハッシュ変更では
+    #   読み込み直しにならないので、新しいタブで開く（T47 と同じやり方）
+    c2 = r.open_tab(hash_=t.eval('location.hash'))
+    # 同じ Chrome プロファイル＝同じ localStorage の名前になるので、別の名前にしてから入る（羅列は重複を畳む）
+    who_c = who + '2'
+    c2.eval("(() => { const n = document.getElementById('name'); n.value = %s; n.dispatchEvent(new Event('input')) })()" % js_str(who_c))
+    click_join(c2)
+    # ★「つながり中」の仮の行（在室情報の名前）でも members に名前が出るので、接続が済んで仮の行から外れるまで待つ
+    seen = t.wait_for("document.getElementById('members').textContent.includes(%s) && !((window.__potPending && window.__potPending()) || []).includes(%s)"
+                      % (js_str(who_c), js_str(who_c)), timeout=DISCOVER)
+    t.eval("document.getElementById('copy').click()", await_promise=False)
+    t.wait_for("__T.clip.length >= 4", timeout=SHORT)
+    two = (t.eval("__T.clip[3]") or '').split('\n')[0]
+    names = seen and two == '🫖 ' + x + ' - ' + who + '、' + who_c
+    # ★配信部屋は配信者の名前（v0.15.30）：配信者 o の招待リンクも、別タブ d のロビーのカードも「📣 部屋名 - o の名前」
+    xb = x + 'BC'
+    o = r.open_tab()
+    bc_ok = make_bcast(r, o, xb) and o.wait_for("location.hash.includes('~pk~')", timeout=DISCOVER)
+    bc_inv = bc_card = False
+    if bc_ok:
+        who_o = o.eval("document.getElementById('name').value") or 'ゲスト'
+        url_o = o.eval("document.getElementById('share').href")
+        o.eval("document.getElementById('copy').click()", await_promise=False)
+        o.wait_for("__T.clip.length >= 1", timeout=SHORT)
+        bc_inv = (o.eval("__T.clip[0]") or '') == '📣 ' + xb + ' - ' + who_o + '\n' + url_o
+        d = r.open_tab()
+        d.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(dd => dd.close())")
+        CARD_B = "[...document.querySelectorAll('#lobbyList .room')].find(b => b.textContent.includes(%s))" % js_str(xb)
+        if d.wait_for("!!" + CARD_B, timeout=DISCOVER):
+            d.eval(CARD_B + ".querySelector('.room-share').click()", await_promise=False)
+            d.wait_for("__T.clip.length >= 1", timeout=SHORT)
+            bc_card = (d.eval("__T.clip[0]") or '') == '📣 ' + xb + ' - ' + who_o + '\n' + url_o
+        click_leave(o)
+    ok = fmt and labeled and top and link_only and told and card_fmt and names and bc_inv and bc_card
+    r.check('T54', '招待リンクのコピーは「部屋名 - 名前」＋URL（リンクのタップは URL だけ・ロビーのカードも同じ形・雑談は在室者の羅列・配信は配信者）', ok, 'pass',
+            '形=%s(%r) / ボタンの文言=%s / バナーは URL だけ=%s / リンクのタップは URL だけ=%s / 案内=%s / ロビーのカード=%s(%r) / 在室者の羅列=%s(%r) / 配信：招待=%s・カード=%s'
+            % (fmt, txt[:60], labeled, top, link_only, told, card_fmt, card_txt[:60], names, two[:60], bc_inv, bc_card))
+    click_leave(c2); click_leave(t)
 
 
 def T41(r, room):
