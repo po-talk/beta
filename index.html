@@ -221,9 +221,14 @@
   /* 名刺（プロフィールカード・v0.16.0） */
   .card-dialog{ max-width:400px }
   .cd-head{ display:flex; align-items:center; gap:12px; margin:0 36px 14px 0 }
-  .cd-head .cd-info{ min-width:0; flex:1 }
+  .cd-avatar-wrap{ position:relative; flex:none; width:52px; height:52px }
   .cd-emoji{ flex:none; width:52px; height:52px; border-radius:14px; display:flex; align-items:center; justify-content:center;
     font-size:30px; background:var(--panel); border:1px solid var(--border-faint) }
+  .cd-avatar-img{ width:52px; height:52px; border-radius:14px; object-fit:cover; background:var(--panel); border:1px solid var(--border-faint); display:block }
+  .cd-sub-emoji{ position:absolute; right:-4px; bottom:-4px; font-size:14px; background:var(--card); border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border-soft); box-shadow:0 1px 3px rgba(0,0,0,0.15); line-height:1 }
+  .ce-avatar-row{ display:flex; align-items:center; gap:12px; margin:6px 0 12px }
+  .ce-avatar-box{ flex:none }
+  .ce-avatar-actions{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
   .cd-head h2{ margin:0; font-size:18px; word-break:break-all }
   .cd-state{ font-size:12px; color:var(--note); margin-top:2px }
   .cd-bio{ background:var(--panel); border:1px solid var(--border-faint); border-radius:10px; padding:10px 12px;
@@ -1426,7 +1431,11 @@
 <dialog id="cardDlg" class="help-dialog card-dialog" aria-labelledby="cdName">
   <button class="help-x" id="cdClose" type="button" aria-label="閉じる">✕</button>
   <div class="cd-head">
-    <div class="cd-emoji" id="cdEmoji">🙂</div>
+    <div class="cd-avatar-wrap">
+      <div class="cd-emoji" id="cdEmoji">🙂</div>
+      <img id="cdAvatar" class="cd-avatar-img" alt="アバター" hidden>
+      <span id="cdSubEmoji" class="cd-sub-emoji" hidden>🙂</span>
+    </div>
     <div class="cd-info">
       <h2 id="cdName">名前</h2>
       <div class="cd-state" id="cdState">通話中</div>
@@ -1453,6 +1462,21 @@
   <button class="help-x" id="ceClose" type="button" aria-label="閉じる">✕</button>
   <h2 id="ceTitle" style="margin:0 36px 8px 0">📇 名刺（プロフィール）設定</h2>
   <p class="sub" style="margin:0 0 12px;font-size:12.5px">端末にのみ保存され、相手があなたのアイコン・名前を押した時だけ直接渡されます。</p>
+
+  <label class="ce-lbl">名刺アイコン（画像または絵文字）</label>
+  <div class="ce-avatar-row">
+    <div class="cd-avatar-wrap" style="width:48px;height:48px">
+      <div class="cd-emoji" id="ceAvatarEmoji" style="width:48px;height:48px;font-size:26px">🙂</div>
+      <img id="ceAvatarImg" class="cd-avatar-img" style="width:48px;height:48px" alt="アイコン" hidden>
+      <span id="ceSubEmoji" class="cd-sub-emoji" style="right:-3px;bottom:-3px;font-size:13px;width:20px;height:20px" hidden>🙂</span>
+    </div>
+    <div class="ce-avatar-actions">
+      <input type="file" id="ceAvatarFile" accept="image/*" hidden>
+      <button type="button" id="ceAvatarPick" class="ce-ver-btn">📷 画像を選ぶ</button>
+      <button type="button" id="ceAvatarClear" class="ca-text-btn" hidden>画像を削除</button>
+    </div>
+  </div>
+
   <label class="ce-lbl" for="ceBio">ひとこと（bio）<span id="ceBioCnt" class="char-count">0/60</span></label>
   <textarea id="ceBio" maxlength="60" placeholder="自己紹介やステータスなど（最大60文字）" rows="2"></textarea>
   
@@ -2458,6 +2482,9 @@ const sanitizeCard = d => {
   if (!d || typeof d !== 'object') return null
   const out = {}
   if (typeof d.bio === 'string') out.bio = capText(d.bio, 60)
+  if (typeof d.avatar === 'string' && d.avatar.startsWith('data:image/') && d.avatar.length <= 40000) {
+    out.avatar = d.avatar
+  }
   if (d.socials && typeof d.socials === 'object') {
     out.socials = {}
     for (const [k, v] of Object.entries(d.socials)) {
@@ -2483,6 +2510,9 @@ const myCardPayload = () => {
   const c = loadCard()
   const p = { k: 'res' }
   if (c.bio) p.bio = capText(c.bio, 60)
+  if (c.avatar && typeof c.avatar === 'string' && c.avatar.startsWith('data:image/') && c.avatar.length <= 40000) {
+    p.avatar = c.avatar
+  }
   if (c.tip && c.tip.p && c.tip.id && TIP_DEFS[c.tip.p]?.re.test(c.tip.id)) p.tip = { p: c.tip.p, id: c.tip.id }
   if (c.socials && typeof c.socials === 'object') {
     const soc = {}
@@ -2505,7 +2535,20 @@ const myCardPayload = () => {
 const renderCardView = (uid, cardData) => {
   const you = uid === 'self'
   const p = you ? profile : (call.profiles.get(uid) || {})
-  $('cdEmoji').textContent = p.emoji || '🙂'
+  const emoji = p.emoji || '🙂'
+  const avatar = cardData?.avatar
+  if (avatar && typeof avatar === 'string' && avatar.startsWith('data:image/') && avatar.length <= 40000) {
+    $('cdAvatar').src = avatar
+    $('cdAvatar').hidden = false
+    $('cdEmoji').hidden = true
+    $('cdSubEmoji').textContent = emoji
+    $('cdSubEmoji').hidden = false
+  } else {
+    $('cdEmoji').textContent = emoji
+    $('cdEmoji').hidden = false
+    $('cdAvatar').hidden = true
+    $('cdSubEmoji').hidden = true
+  }
   $('cdName').textContent = p.name || (you ? 'あなた' : 'ゲスト')
   $('cdState').textContent = you ? '通話中（あなた）' : (call.ignored.has(uid) ? '非表示（無視中）' : '通話中')
 
@@ -2692,11 +2735,74 @@ const handleAutoTrim = (el, def) => {
   }
 }
 
+const processAvatarFile = file => new Promise((resolve, reject) => {
+  if (!file || !file.type.startsWith('image/')) return reject(new Error('画像ファイルを選択してください'))
+  const reader = new FileReader()
+  reader.onload = e => {
+    const img = new Image()
+    img.onload = () => {
+      const size = 128
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      const minDim = Math.min(img.width, img.height)
+      const sx = (img.width - minDim) / 2
+      const sy = (img.height - minDim) / 2
+      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+      resolve(dataUrl)
+    }
+    img.onerror = () => reject(new Error('画像の読み込みに失敗しました'))
+    img.src = e.target.result
+  }
+  reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'))
+  reader.readAsDataURL(file)
+})
+
+let curAvatar = null
+const syncAvatarUI = avatar => {
+  curAvatar = avatar || null
+  const emoji = profile.emoji || '🙂'
+  if (curAvatar) {
+    $('ceAvatarImg').src = curAvatar
+    $('ceAvatarImg').hidden = false
+    $('ceAvatarEmoji').hidden = true
+    $('ceSubEmoji').textContent = emoji
+    $('ceSubEmoji').hidden = false
+    $('ceAvatarClear').hidden = false
+  } else {
+    $('ceAvatarEmoji').textContent = emoji
+    $('ceAvatarEmoji').hidden = false
+    $('ceAvatarImg').hidden = true
+    $('ceSubEmoji').hidden = true
+    $('ceAvatarClear').hidden = true
+  }
+}
+
+$('ceAvatarPick').onclick = () => { $('ceAvatarFile').click() }
+$('ceAvatarClear').onclick = () => {
+  $('ceAvatarFile').value = ''
+  syncAvatarUI(null)
+}
+$('ceAvatarFile').onchange = async e => {
+  const file = e.target.files?.[0]
+  if (!file) return
+  try {
+    const dataUrl = await processAvatarFile(file)
+    syncAvatarUI(dataUrl)
+  } catch (err) {
+    alert(err.message || '画像の処理に失敗しました')
+  }
+}
+
 const openCardEdit = () => {
   const c = loadCard()
   $('ceWarn').hidden = true
   $('ceWarn').textContent = ''
   document.querySelectorAll('#cardEditDlg input[type=text]').forEach(el => el.classList.remove('is-bad'))
+
+  syncAvatarUI(c.avatar || null)
 
   $('ceBio').value = c.bio || ''
   syncBioCount()
@@ -3013,7 +3119,7 @@ $('ceSave').onclick = () => {
     }
   }
 
-  saveCard({ bio, tip, socials, verified, savedTips })
+  saveCard({ bio, tip, socials, verified, savedTips, avatar: curAvatar || null })
   $('cardEditDlg').close()
 }
 
