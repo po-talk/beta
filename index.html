@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.30
+  ぽっと通話〈実験版〉 v0.15.31
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -289,6 +289,7 @@
   /* 通知音のトグル（入室・退出音＝通話カード／新部屋音＝ロビー）。help-hide と同系の控えめな見た目 */
   .snd-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:var(--sub); cursor:pointer; user-select:none }
   .snd-opt input{ width:auto; margin:0; padding:0; accent-color:var(--accent); flex:none }
+  .ntf-note{ color:var(--warn, #c0392b) }
   #sndPeerRow, #sndReactRow, #sndTtsRow{ margin-top:4px }   /* 人数表示のすぐ下に寄せる */
   /* 音量スライダー。行の形はトグル（.snd-opt）と同じだが、input の扱いが逆
      （.snd-opt input は width:auto 固定、こちらは横いっぱいに伸ばしたい）ので別クラスにする。
@@ -1255,8 +1256,9 @@
   <div class="lobby-status" id="lobbyStatus">🛰 ロビーに接続中…</div>
   <div class="lobby-list" id="lobbyList"></div>
   <label class="snd-opt"><input type="checkbox" id="sndRoom"> 🔔 新しい部屋ができたら音で知らせる</label>
+  <label class="snd-opt" id="ntfRoomOpt" hidden><input type="checkbox" id="ntfRoom"> 📢 パソコンの通知でも知らせる（ほかの画面を見ているとき）<span class="ntf-note" id="ntfRoomNote"></span></label>
   <div class="lobby-viewers" id="lobbyViewers"></div>
-  <p class="lobby-note">部屋をタップするとそのまま入室します。通話中は確認のうえ移動します。<br>新しい部屋の音は、このタブを開いている間だけ鳴ります（スマホは裏に回ると鳴りません）。</p>
+  <p class="lobby-note">部屋をタップするとそのまま入室します。通話中は確認のうえ移動します。<br>新しい部屋の音と通知は、このタブを開いている間だけ届きます（閉じると届きません。スマホは裏に回ると届きません）。タブの名前にも、通話中の部屋の数が出ます。</p>
 </aside>
 </div>
 
@@ -1408,7 +1410,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.30'
+const APP_VERSION = 'v0.15.31'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1853,6 +1855,7 @@ const roomUrl = (id, name) => location.origin + location.pathname + '#room=' + i
 // 常設の部屋（案内役・やまびこ）は 2026-10-08 に ID＝名前からハッシュ方式へ移った。古いリンク（/start/ の旧版・
 // ブックマーク）の `#room=旧名` を新しい ID に読み替える。potalk-greeter の ROOM_ID と対（変えるなら両方）
 const MOVED_ROOMS = { 'ぽっと通話にようこそ': 'X7fZgwbqs8CqUF8T', 'やまびこ部屋⛰️（5秒で返信）': 'U7PU1_IarAwtqnBf' }
+const STANDING_ROOMS = new Set(Object.values(MOVED_ROOMS))   // ボットが常駐する部屋（ロビーの知らせでは、人が来たときだけ数える）
 const parseHash = () => {
   const raw = location.hash.slice(1)
   if (raw.startsWith('room=')) {
@@ -3411,6 +3414,83 @@ const soundRoom  = () => { if (sndRoom) playTones([[988, 0, 0.09], [1319, 0.08, 
     if (sndRoom) { ensureAudioCtx(); soundRoom() }   // オンにした操作で解錠＋見本を1回鳴らす
   }
 }
+
+// ─ 新しい部屋の知らせ（v0.15.31）─ 「いま誰かが話している」を、ロビーを開いたまま別のことをしている人に届ける。
+// ①OS の通知（Notification API・オプトイン）②タブの題名とアイコンの印（許可不要・常時）。
+// ★**前景だけ**（このタブが開いている間）。タブを閉じても届く通知（Service Worker＋Web Push）は、押す側に
+//   運営のサーバが要る＝在室を運営の機器で検知・中継する形になり、CLAUDE.md の法的境界を越えるのでやらない。
+// ★スマホでは出さない：Android の Chrome は `new Notification()` が例外（SW 経由しか許さない）、iOS は Safari の
+//   タブに Notification が無く、ホーム追加した PWA でも裏では届かない（09-28 に実測）。スマホの印は②だけ。
+const NTF_ROOM_KEY = 'pot-call-ntf-room'
+const ntfCan = () => 'Notification' in window && window.isSecureContext && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')
+let ntfRoom = ntfCan() && lsGet(NTF_ROOM_KEY) === '1' && Notification.permission === 'granted'
+{
+  const opt = $('ntfRoomOpt'), box = $('ntfRoom'), note = $('ntfRoomNote')
+  opt.hidden = !ntfCan()
+  box.checked = ntfRoom
+  const denied = () => { note.textContent = '（ブラウザの設定で通知が止められています。アドレス欄の左の印から許可できます）' }
+  if (ntfCan() && lsGet(NTF_ROOM_KEY) === '1' && Notification.permission === 'denied') denied()
+  box.onchange = async () => {
+    note.textContent = ''
+    if (!box.checked) { ntfRoom = false; lsSet(NTF_ROOM_KEY, '0'); return }
+    // 許可の問い合わせはこの操作（ユーザー操作）の中でしかできない
+    let perm = Notification.permission
+    if (perm === 'default') { try { perm = await Notification.requestPermission() } catch { perm = 'denied' } }
+    ntfRoom = perm === 'granted'
+    box.checked = ntfRoom; lsSet(NTF_ROOM_KEY, ntfRoom ? '1' : '0')
+    if (perm === 'denied') denied()
+  }
+}
+// 見ている最中なら一覧と音で足りる＝OS の通知は「ほかの画面を見ているとき」だけ出す
+const ntfAway = () => document.hidden || !document.hasFocus()
+const notifyRooms = fresh => {   // fresh: [{room, people}]（新しく現れた部屋・1 件以上）
+  if (!ntfRoom || !ntfAway() || !fresh.length) return
+  const { room, people } = fresh[0]
+  const title = (isBcRoom(room) ? '📣 配信が始まりました' : '☎️ 通話が始まりました') + (fresh.length > 1 ? '（ほか ' + (fresh.length - 1) + ' 部屋）' : '')
+  const who = namesLine(people.map(p => ((p.emoji || '') + (p.name || '')).trim()))
+  try {
+    const n = new Notification(title, {
+      body: lobbyName(room, people) + (who ? '\n' + who : ''),
+      icon: 'images/icon-512.png',
+      tag: 'pot-room',   // 重ねず差し替える（溜まった通知の山を作らない）
+    })
+    n.onclick = () => { try { window.focus() } catch {} ; n.close(); const l = document.querySelector('.lobby'); if (l) l.scrollIntoView({ block: 'start' }) }
+  } catch { ntfRoom = false; $('ntfRoomOpt').hidden = true }   // 対応していない環境（UA 判定の漏れ）は黙って畳む
+}
+// タブの題名とアイコン：通話中の部屋があれば「● N部屋で通話中」、見ていない間に新しい部屋ができたら「🔔」。
+// 数えるのは自分以外の部屋（自分ひとりの部屋で印が付いても「誰かいる」の意味にならない）
+const BASE_TITLE = document.title
+const favLinks = [...document.querySelectorAll('link[rel="icon"]')].map(l => ({ l, href: l.getAttribute('href'), type: l.getAttribute('type') }))
+let favDot = ''          // 印つきアイコンの data URL（一度だけ作る）
+let favOn = false
+let tabRooms = 0, tabFresh = false
+const setFav = on => {
+  if (on === favOn) return
+  favOn = on
+  if (!on) { favLinks.forEach(({ l, href, type }) => { l.setAttribute('href', href); if (type) l.setAttribute('type', type); else l.removeAttribute('type') }); return }
+  const apply = () => { if (favOn && favDot) favLinks.forEach(({ l }) => { l.setAttribute('href', favDot); l.setAttribute('type', 'image/png') }) }
+  if (favDot) return apply()
+  const img = new Image()
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 64
+      const g = c.getContext('2d')
+      g.drawImage(img, 0, 0, 64, 64)
+      g.beginPath(); g.arc(48, 16, 14, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill()
+      g.beginPath(); g.arc(48, 16, 10, 0, Math.PI * 2); g.fillStyle = '#22b14c'; g.fill()
+      favDot = c.toDataURL('image/png')
+    } catch { return }
+    apply()
+  }
+  img.src = 'images/icon.svg'
+}
+const renderTabMark = () => {
+  document.title = (tabFresh ? '🔔 新しい部屋｜' : tabRooms ? '● ' + tabRooms + '部屋で通話中｜' : '') + BASE_TITLE
+  setFav(tabRooms > 0)
+}
+const clearTabFresh = () => { if (tabFresh && !ntfAway()) { tabFresh = false; renderTabMark() } }
+document.addEventListener('visibilitychange', clearTabFresh)
+addEventListener('focus', clearTabFresh)
 
 // ─ ひとことの読み上げ v2（v0.14.42）─ ブラウザ内の合成エンジン piper-plus（つくよみちゃん）で PCM を作り、
 // BGM と同じ出口（Web Audio → appAudio）から鳴らす。**配信部屋のオーナーだけ**（設計＝internal/PLAN-tts-piper-2026-09-26.md）。
@@ -6223,6 +6303,8 @@ if (!EQ_REDUCE) setInterval(() => {
 const LOBBY_MAX_ROOMS = 50
 const ROOM_SOUND_GAP_MS = 10000
 let lastRoomSound = 0
+const ROOM_RETURN_QUIET_MS = 2 * 60 * 1000   // 消えてこの時間内に戻った部屋は「新しい部屋」と知らせない
+const roomGoneAt = new Map()                 // 部屋 ID → 一覧から消えた時刻
 
 // ─ 入口の確認（リンクで来た人）──────────────────────────────
 // ★URL の部屋名だけを頼りに参加すると、**古いリンク・QR を開いた人が無人の部屋を立ててしまう**
@@ -6357,18 +6439,35 @@ const renderLobby = () => {
   roomFloor.forEach((_, r) => { if (!byRoom.has(r)) roomFloor.delete(r) })   // 消えた部屋の記憶を捨てる
   // 新しい部屋の音：探索期間（DISCOVER_MS）は既存部屋を黙って覚えるだけ。以降に初めて現れた部屋だけ鳴らす。
   // 自分の部屋は除外。消えた部屋は忘れるので、再び立てば改めて鳴る（＝死活監視向き）。
+  // ★消えてすぐ戻った部屋（ROOM_RETURN_QUIET_MS 以内）は「新しい」と言わない（v0.15.31）。在室が一瞬途切れて
+  //   戻っただけ（裏タブのタイマー絞り・回線の揺れ）で鳴ると、誤報が続いて知らせそのものが信用されなくなる。
+  // ★常設の部屋（案内役・やまびこ＝ボットが 24 時間いる）は、**ボット以外の人がいるときだけ**「通話中」と数える。
+  //   そうしないと題名の印が常時点灯し、ボットの再起動のたびに「通話が始まりました」が鳴る。人が入った瞬間は
+  //   「話し相手がいる」合図なので、その時点を新しい部屋として知らせる（v0.15.31）
+  const live = new Set(names.filter(r => !STANDING_ROOMS.has(r) || byRoom.get(r).length > 1))
   const seeded = Date.now() - lobbySince >= DISCOVER_MS
-  names.forEach(r => {
+  const fresh = []
+  live.forEach(r => {
     if (seenRooms.has(r)) return
     seenRooms.add(r)
+    const gone = roomGoneAt.get(r); roomGoneAt.delete(r)
     if (!seeded || r === call.joinedId) return
-    // まとめて現れたときに鳴りっぱなしにしない。取りこぼしても「新しい部屋がある」ことは
-    // 一覧を見れば分かるので、間隔を空けるほうが実害が小さい。
-    if (Date.now() - lastRoomSound < ROOM_SOUND_GAP_MS) return
+    if (gone && Date.now() - gone < ROOM_RETURN_QUIET_MS) return
+    fresh.push({ room: r, people: byRoom.get(r) })
+  })
+  // まとめて現れたときに鳴りっぱなしにしない。取りこぼしても「新しい部屋がある」ことは
+  // 一覧と題名を見れば分かるので、間隔を空けるほうが実害が小さい。
+  if (fresh.length && Date.now() - lastRoomSound >= ROOM_SOUND_GAP_MS) {
     lastRoomSound = Date.now()
     soundRoom()
-  })
-  seenRooms.forEach(r => { if (!byRoom.has(r)) seenRooms.delete(r) })
+    notifyRooms(fresh)
+  }
+  if (fresh.length && ntfAway()) tabFresh = true
+  seenRooms.forEach(r => { if (!live.has(r)) { seenRooms.delete(r); roomGoneAt.set(r, Date.now()) } })
+  roomGoneAt.forEach((t, r) => { if (Date.now() - t >= ROOM_RETURN_QUIET_MS) roomGoneAt.delete(r) })
+  tabRooms = [...live].filter(r => r !== call.joinedId).length
+  if (!tabRooms) tabFresh = false   // もう終わった部屋を「🔔 新しい部屋」と言い続けない
+  renderTabMark()
   names.slice(0, LOBBY_MAX_ROOMS).forEach(room => {
     const people = byRoom.get(room)
     // 活発さ＝その部屋の誰かが話していれば、その最大値。内側のリングの濃さで示す
