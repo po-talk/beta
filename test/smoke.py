@@ -2228,9 +2228,27 @@ def T73(r):
     code_text = a.eval("document.getElementById('caCode').textContent")
     has_code = bool(code_text and code_text.startswith('potalk-'))
 
+    # コード再生成ボタンで別のコードに変わるか
+    a.eval("document.getElementById('caRefreshCode').click()")
+    code_text2 = a.eval("document.getElementById('caCode').textContent")
+    refreshed_code = bool(code_text2 and code_text2.startswith('potalk-') and code_text2 != code_text)
+
     # キャンセルで閉じる
     a.eval("document.getElementById('caCancelBtn').click()")
     auth_closed = a.wait_for("!document.getElementById('cardAuthDlg').open", timeout=SHORT)
+
+    # X の認証ボタンで開いた時、ポスト用UIとインテントリンクがセットされているか
+    a.eval("""(() => {
+        const inp = document.getElementById('ceSns_x');
+        inp.value = 'potalk_app';
+        inp.dispatchEvent(new Event('input'));
+        document.getElementById('ceBtnVer_x').click();
+    })()""")
+    a.wait_for("document.getElementById('cardAuthDlg').open", timeout=SHORT)
+    tweet_btn_href = a.eval("document.getElementById('caTweetBtn').href")
+    has_tweet_intent = bool(tweet_btn_href and 'x.com/intent/post?text=' in tweet_btn_href)
+    a.eval("document.getElementById('caCancelBtn').click()")
+    a.wait_for("!document.getElementById('cardAuthDlg').open", timeout=SHORT)
 
     # 認証済み状態をシミュレートしてUI同期
     a.eval("""(() => {
@@ -2301,11 +2319,11 @@ def T73(r):
 
     a.eval("document.getElementById('ceCancel').click()")
 
-    ok = bool(dlg_open and btn_shown and auth_open and has_code and auth_closed and badge_shown and unverified and
+    ok = bool(dlg_open and btn_shown and auth_open and has_code and refreshed_code and has_tweet_intent and auth_closed and badge_shown and unverified and
               trimmed_ofuse and trimmed_amz and trimmed_x and is_bad_flag and save_blocked and saved_ok)
-    r.check('T73', '名刺編集・認証チャレンジUI：URL自動切り詰め・形式検証・コード提示・モーダル開閉・バッジ解除', ok, 'pass',
-            '編集開=%s / 認証釦=%s / 認証開=%s / コード=%s / バッジ=%s / 解除=%s / OFUSE切詰=%s / Amazon切詰=%s / X切詰=%s / 不正検知=%s / 保存防御=%s / 保存OK=%s'
-            % (dlg_open, btn_shown, auth_open, code_text, badge_shown, unverified,
+    r.check('T73', '名刺編集・認証チャレンジUI：URL自動切り詰め・形式検証・コード再生成・Xポスト連携・モーダル開閉・バッジ解除', ok, 'pass',
+            '編集開=%s / 認証釦=%s / 認証開=%s / コード=%s / 再生成=%s / X連携=%s / バッジ=%s / 解除=%s / OFUSE切詰=%s / Amazon切詰=%s / X切詰=%s / 不正検知=%s / 保存防御=%s / 保存OK=%s'
+            % (dlg_open, btn_shown, auth_open, code_text, refreshed_code, has_tweet_intent, badge_shown, unverified,
                trimmed_ofuse, trimmed_amz, trimmed_x, is_bad_flag, save_blocked, saved_ok))
 
 
