@@ -249,13 +249,13 @@
   .cd-foot{ border-top:1px solid var(--border-faint); padding-top:10px; margin-top:8px }
   .help-dialog p.cd-foot-note{ font-size:12px; color:var(--note); margin:0 0 8px }
   #cdIgnore{ margin:0; padding:10px; font-size:13.5px; border-radius:10px; background:transparent; color:var(--red); border:1px solid var(--red-glow); cursor:pointer }
-  /* 名刺編集 */
+  /* 名刺編集（※iOS Safari は font-size:16px 未満の入力欄にフォーカスすると画面を自動拡大するため 16px 固定） */
   .card-dialog textarea{ width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--panel);
-    color:var(--text); font:inherit; font-size:14px; resize:vertical; min-height:4em }
+    color:var(--text); font:inherit; font-size:16px; resize:vertical; min-height:4em }
   .card-dialog label.ce-lbl{ display:flex; align-items:center; justify-content:space-between; margin:12px 0 6px; font-size:13px; color:var(--sub) }
   .ce-row{ display:flex; align-items:center; gap:8px; margin:6px 0 }
   .ce-row .ce-name{ flex:none; width:7.5em; font-size:13px; color:var(--body) }
-  .ce-row input[type=text]{ flex:1; min-width:0; padding:8px 10px; font-size:14px }
+  .ce-row input[type=text]{ flex:1; min-width:0; padding:8px 10px; font-size:16px }
   .ce-row input[type=radio]{ flex:none; width:auto; margin:0; accent-color:var(--accent) }
   .ce-row.bad input[type=text]{ border-color:var(--warn) }
   .ce-row .ce-ok{ flex:none; width:1.5em; text-align:center; font-size:13px }
