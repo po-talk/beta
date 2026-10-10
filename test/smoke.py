@@ -1430,9 +1430,24 @@ def T54(r, room):
     t.wait_for("__T.clip.length >= 3", timeout=SHORT)
     link_only = t.eval("__T.clip[2]") == url and t.eval("location.hash") == before_hash
     told = 'URL をコピーしました' in (t.eval("document.getElementById('shareLabel').textContent") or '')
-    ok = fmt and labeled and top and link_only and told
-    r.check('T54', '招待リンクのコピーは「部屋名 - 名前」＋URL（リンクのタップは URL だけ）', ok, 'pass',
-            '形=%s(%r) / ボタンの文言=%s / バナーは URL だけ=%s / リンクのタップは URL だけ=%s / 案内=%s' % (fmt, txt[:60], labeled, top, link_only, told))
+    # ★ロビーの部屋カードの共有ボタンも同じ形（v0.15.29・利用者の要望）：別タブ c のロビーに t の部屋が出たら押す。
+    #   名前はコピーする本人（c）の名前。URL は t の共有リンクと同じ
+    c = r.open_tab()
+    c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    CARD = "[...document.querySelectorAll('#lobbyList .room')].find(b => b.textContent.includes(%s))" % js_str(x)
+    card = c.wait_for("!!" + CARD, timeout=DISCOVER)
+    card_txt = ''
+    if card:
+        c.eval(CARD + ".querySelector('.room-share').click()", await_promise=False)
+        c.wait_for("__T.clip.length >= 1", timeout=SHORT)
+        card_txt = c.eval("__T.clip[0]") or ''
+    who_c = c.eval("document.getElementById('name').value") or 'ゲスト'
+    cl = card_txt.split('\n')
+    card_fmt = bool(card) and len(cl) == 2 and cl[0] == '🫖 ' + x + ' - ' + who_c and cl[1] == url
+    ok = fmt and labeled and top and link_only and told and card_fmt
+    r.check('T54', '招待リンクのコピーは「部屋名 - 名前」＋URL（リンクのタップは URL だけ・ロビーのカードも同じ形）', ok, 'pass',
+            '形=%s(%r) / ボタンの文言=%s / バナーは URL だけ=%s / リンクのタップは URL だけ=%s / 案内=%s / ロビーのカード=%s(%r)'
+            % (fmt, txt[:60], labeled, top, link_only, told, card_fmt, card_txt[:60]))
     click_leave(t)
 
 
@@ -2140,6 +2155,9 @@ def T27i(r, room):
                         ".some(e => e.textContent.endsWith('さんが入室しました'))", timeout=DISCOVER + 5)
     named = o.eval("[...document.querySelectorAll('#chatLog .cl-sys .cl-text')]"
                    ".some(e => e.textContent === %s + ' さんが入室しました')" % js_str(lname)) if lname else notice
+    # ★本人の画面にも同じ行が出る（v0.15.29）。Trystero は自分の送信を自分に配らないので、送り手側で出す必要がある
+    selfline = l.wait_for("[...document.querySelectorAll('#chatLog .cl-sys .cl-text')]"
+                          ".some(e => e.textContent === %s + ' さんが入室しました')" % js_str(lname or 'ゲスト'), timeout=SHORT)
     # ★🤫 チェックの存在：第三のタブ c がロビーで配信部屋をタップ → #roomAskQuiet が出る（聞き役のときだけ）
     c = r.open_tab()
     c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
@@ -2148,9 +2166,9 @@ def T27i(r, room):
     if tapped:
         c.eval(RB + ".click()", await_promise=False)
     quiet_box = c.wait_for("!!document.getElementById('roomAskQuiet')", timeout=SHORT)
-    ok = notice and named and quiet_box
-    r.check('T27i', '入室通知：聞き役の入室が「〇〇さんが入室しました」で出る・🤫 静かにチェックがある', ok, 'pass',
-            'ひとことに入室通知=%s / 名前つき=%s / 🤫チェックあり=%s' % (notice, named, quiet_box))
+    ok = notice and named and selfline and quiet_box
+    r.check('T27i', '入室通知：聞き役の入室が「〇〇さんが入室しました」で出る・本人にも出る・🤫 静かにチェックがある', ok, 'pass',
+            'ひとことに入室通知=%s / 名前つき=%s / 本人の画面にも=%s / 🤫チェックあり=%s' % (notice, named, selfline, quiet_box))
     click_leave(l); click_leave(o)
 
 
