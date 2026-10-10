@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.15.31
+  ぽっと通話〈実験版〉 v0.16.0
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -218,6 +218,57 @@
   .ignore-actions button{ flex:1; width:auto; margin:0; padding:11px; font-size:14px; border-radius:10px }
   #ignoreYes{ background:var(--red); color:#fff }
   #ignoreNo{ background:var(--mute); color:var(--text) }
+  /* 名刺（プロフィールカード・v0.16.0） */
+  .card-dialog{ max-width:400px }
+  .cd-head{ display:flex; align-items:center; gap:12px; margin:0 0 14px }
+  .cd-emoji{ flex:none; width:52px; height:52px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+    font-size:30px; background:var(--panel); border:1px solid var(--border-faint) }
+  .cd-head h2{ margin:0; font-size:18px; word-break:break-all }
+  .cd-state{ font-size:12px; color:var(--note); margin-top:2px }
+  .cd-bio{ background:var(--panel); border:1px solid var(--border-faint); border-radius:10px; padding:10px 12px;
+    font-size:13.5px !important; white-space:pre-wrap; word-break:break-word; margin:0 0 12px }
+  .cd-tip{ border:1px solid var(--warn-border); background:var(--warn-bg); border-radius:12px; padding:12px; margin:0 0 12px }
+  .cd-tip a{ display:block; text-align:center; padding:10px; border-radius:10px; background:var(--join-bg); color:var(--join-fg) !important;
+    font-weight:700; font-size:14px; text-decoration:none }
+  .cd-tip .cd-tip-sub{ display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:var(--sub); word-break:break-all }
+  .help-dialog p.cd-tip-note{ margin:6px 0 0; font-size:12px; color:var(--note); line-height:1.5 }
+  .cd-sec{ margin:10px 0 6px; font-size:12px; font-weight:700; color:var(--sub) }
+  .cd-socials{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px }
+  .cd-sns{ display:inline-flex; align-items:center; gap:6px; width:auto; margin:0; padding:7px 12px; border-radius:10px; font-size:13px; font-weight:600;
+    background:var(--chip); color:var(--text) !important; border:1px solid var(--border-soft); text-decoration:none; cursor:pointer }
+  .cd-sns:hover{ background:var(--chip-hover) }
+  .cd-sns .cd-ok{ font-size:12px; color:var(--link) }
+  .cd-sns .cd-un{ font-size:11px; font-weight:400; color:var(--note); background:var(--card); padding:1px 5px; border-radius:4px }
+  .cd-warn{ border:1px solid var(--warn-border); background:var(--warn-bg); border-radius:12px; padding:12px; margin:0 0 12px }
+  .help-dialog .cd-warn p{ margin:0 0 10px; font-size:13px; color:var(--text) }
+  .cd-warn-actions{ display:flex; gap:8px }
+  .cd-warn a, .cd-warn button{ flex:1; width:auto; margin:0; padding:10px; font-size:14px; border-radius:10px; text-align:center; font-weight:700; text-decoration:none }
+  #cdWarnGo{ background:var(--warn); color:#3a2c00 !important }
+  #cdWarnNo{ background:var(--mute); color:var(--text) }
+  .cd-foot{ border-top:1px solid var(--border-faint); padding-top:10px; margin-top:8px }
+  .help-dialog p.cd-foot-note{ font-size:12px; color:var(--note); margin:0 0 8px }
+  #cdIgnore{ margin:0; padding:10px; font-size:13.5px; border-radius:10px; background:transparent; color:var(--red); border:1px solid var(--red-glow); cursor:pointer }
+  /* 名刺編集 */
+  .card-dialog textarea{ width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--panel);
+    color:var(--text); font:inherit; font-size:14px; resize:vertical; min-height:4em }
+  .card-dialog label.ce-lbl{ display:flex; align-items:center; justify-content:space-between; margin:12px 0 6px; font-size:13px; color:var(--sub) }
+  .ce-row{ display:flex; align-items:center; gap:8px; margin:6px 0 }
+  .ce-row .ce-name{ flex:none; width:7.5em; font-size:13px; color:var(--body) }
+  .ce-row input[type=text]{ flex:1; min-width:0; padding:8px 10px; font-size:14px }
+  .ce-row input[type=radio]{ flex:none; width:auto; margin:0; accent-color:var(--accent) }
+  .ce-row.bad input[type=text]{ border-color:var(--warn) }
+  .ce-row .ce-ok{ flex:none; width:1.5em; text-align:center; font-size:13px }
+  .ce-none{ display:flex; align-items:center; gap:8px; margin:6px 0; font-size:13px; color:var(--sub); cursor:pointer }
+  .ce-none input{ width:auto; margin:0; accent-color:var(--accent) }
+  .help-dialog p.ce-note{ font-size:12px; color:var(--note); margin:4px 0 10px; line-height:1.6 }
+  .ce-actions{ display:flex; gap:10px; margin-top:14px }
+  .ce-actions button{ flex:1; width:auto; margin:0; padding:12px; font-size:14px; border-radius:10px }
+  #ceSave{ background:var(--join-bg); color:var(--join-fg) }
+  #ceCancel{ background:var(--mute); color:var(--text) }
+  .pf-card-btn{ width:100%; margin:10px 0 0; padding:9px 12px; font-size:13px; font-weight:700; border-radius:9px; background:var(--chip); color:var(--chip-fg); cursor:pointer }
+  /* メンバー行のタップ可能装飾 */
+  .member .m-tap{ cursor:pointer; text-decoration:underline dotted var(--border-faint); text-underline-offset:3px }
+  .member .m-tap:hover{ color:var(--link) }
   /* 共有アクション：コピーとQRを横並び */
   .share-actions{ display:flex; gap:8px }
   .share-actions button{ flex:1; width:auto }
@@ -1014,6 +1065,7 @@
       <div id="avatars" class="avatars"></div>
 
       <div class="grow-note" id="growNote"></div>
+      <button id="btnOpenCardEdit" class="pf-card-btn" type="button">📇 名刺（プロフィールカード）を設定</button>
     </div></div>
   </details>
 
@@ -1347,6 +1399,115 @@
     <button id="ignoreNo" type="button">やめる</button>
   </div>
 </dialog>
+<!-- 名刺の閲覧モーダル（v0.16.0） -->
+<dialog id="cardDlg" class="help-dialog card-dialog" aria-labelledby="cdName">
+  <div class="cd-head">
+    <div class="cd-emoji" id="cdEmoji">🙂</div>
+    <div>
+      <h2 id="cdName">名前</h2>
+      <div class="cd-state" id="cdState">通話中</div>
+    </div>
+    <button class="help-x" id="cdClose" type="button" aria-label="閉じる">✕</button>
+  </div>
+  <p class="cd-bio" id="cdBio"></p>
+  <div class="cd-tip" id="cdTip" hidden>
+    <a id="cdTipLink" href="#" target="_blank" rel="noopener noreferrer nofollow">お礼を贈る</a>
+    <div class="cd-tip-sub" id="cdTipSub"></div>
+    <p class="cd-tip-note">※ お礼リンクは本人が設定したものです（運営は確認していません）</p>
+  </div>
+  <div id="cdSocialsSec" hidden>
+    <div class="cd-sec">SNS・アカウント</div>
+    <div class="cd-socials" id="cdSocials"></div>
+  </div>
+  <div class="cd-foot">
+    <p class="cd-foot-note">※ P2Pオンデマンド名刺交換（サーバー不保持）</p>
+    <button id="cdEditBtn" class="pf-card-btn" type="button" hidden>✏️ 自分の名刺を編集する</button>
+    <button id="cdIgnore" type="button" hidden>🛑 この人を非表示 ＆ 消音（自衛）</button>
+  </div>
+</dialog>
+<!-- 名刺の編集モーダル（v0.16.0） -->
+<dialog id="cardEditDlg" class="help-dialog card-dialog" aria-labelledby="ceTitle">
+  <div class="head-row">
+    <h2 id="ceTitle" style="margin:0 0 8px">📇 名刺（プロフィール）設定</h2>
+    <button class="help-x" id="ceClose" type="button" aria-label="閉じる">✕</button>
+  </div>
+  <p class="sub" style="margin:0 0 12px;font-size:12.5px">端末にのみ保存され、相手があなたのアイコン・名前を押した時だけ直接渡されます。</p>
+  <label class="ce-lbl" for="ceBio">ひとこと（bio）<span id="ceBioCnt" class="char-count">0/60</span></label>
+  <textarea id="ceBio" maxlength="60" placeholder="自己紹介やステータスなど（最大60文字）" rows="2"></textarea>
+  
+  <label class="ce-lbl">お礼・チップ窓口（提示する1件を選択）</label>
+  <label class="ce-none"><input type="radio" name="ceTipOpt" value="none" checked> 提示しない（非表示）</label>
+  <div class="ce-row">
+    <input type="radio" name="ceTipOpt" value="ofuse" id="ceTipR_ofuse">
+    <span class="ce-name">☕ OFUSE</span>
+    <input type="text" id="ceTip_ofuse" placeholder="ユーザID（英数字_）" autocomplete="off" maxlength="30">
+  </div>
+  <div class="ce-row">
+    <input type="radio" name="ceTipOpt" value="amazon" id="ceTipR_amazon">
+    <span class="ce-name">📦 ほしい物リスト</span>
+    <input type="text" id="ceTip_amazon" placeholder="リストIDまたは短縮URL" autocomplete="off" maxlength="120">
+  </div>
+  <div class="ce-row">
+    <input type="radio" name="ceTipOpt" value="zap" id="ceTipR_zap">
+    <span class="ce-name">⚡ Nostr Zap</span>
+    <input type="text" id="ceTip_zap" placeholder="name@domain または npub" autocomplete="off" maxlength="64">
+  </div>
+  <div class="ce-row">
+    <input type="radio" name="ceTipOpt" value="kofi" id="ceTipR_kofi">
+    <span class="ce-name">☕ Ko-fi</span>
+    <input type="text" id="ceTip_kofi" placeholder="ユーザ名" autocomplete="off" maxlength="30">
+  </div>
+  <div class="ce-row">
+    <input type="radio" name="ceTipOpt" value="bmac" id="ceTipR_bmac">
+    <span class="ce-name">🥐 Buy Me Coffee</span>
+    <input type="text" id="ceTip_bmac" placeholder="ユーザ名" autocomplete="off" maxlength="30">
+  </div>
+  <p class="ce-note">※ Amazonほしい物リストは配送先の本名や住所バレにご注意ください。</p>
+
+  <label class="ce-lbl">SNS ID（オプトイン本人確認対応）</label>
+  <div class="ce-row">
+    <span class="ce-name">𝕏 (Twitter)</span>
+    <input type="text" id="ceSns_x" placeholder="@なしのID" autocomplete="off" maxlength="15">
+    <span class="ce-ok" id="ceSnsOk_x" title="未認証"></span>
+  </div>
+  <div class="ce-row">
+    <span class="ce-name">🐙 GitHub</span>
+    <input type="text" id="ceSns_github" placeholder="ユーザ名" autocomplete="off" maxlength="39">
+    <span class="ce-ok" id="ceSnsOk_github" title="未認証"></span>
+  </div>
+  <div class="ce-row">
+    <span class="ce-name">📝 note</span>
+    <input type="text" id="ceSns_note" placeholder="クリエイター名" autocomplete="off" maxlength="32">
+    <span class="ce-ok" id="ceSnsOk_note" title="未認証"></span>
+  </div>
+  <div class="ce-row">
+    <span class="ce-name">📸 Instagram</span>
+    <input type="text" id="ceSns_instagram" placeholder="ユーザ名（自己申告）" autocomplete="off" maxlength="30">
+    <span class="ce-ok" id="ceSnsOk_instagram"></span>
+  </div>
+  <div class="ce-row">
+    <span class="ce-name">🟣 Nostr</span>
+    <input type="text" id="ceSns_nostr" placeholder="npub1..." autocomplete="off" maxlength="64">
+    <span class="ce-ok" id="ceSnsOk_nostr" title="未認証"></span>
+  </div>
+  <p class="ce-note">※ IDを入れるだけで手軽に掲載できます。認証コード等の検証を通すと ✅ 認証バッジが灯ります。</p>
+
+  <div class="ce-actions">
+    <button id="ceSave" type="button">保存する</button>
+    <button id="ceCancel" type="button">閉じる</button>
+  </div>
+</dialog>
+<!-- 未認証リンク注意喚起ダイアログ（v0.16.0） -->
+<dialog id="cardWarnDlg" class="help-dialog ignore-dialog" aria-labelledby="cdWarnTitle">
+  <h2 id="cdWarnTitle">⚠️ 未検証のアカウントです</h2>
+  <div class="cd-warn">
+    <p id="cdWarnMsg">このリンクは本人が所有しているか未検証です。なりすましにご注意ください。</p>
+    <div class="cd-warn-actions">
+      <a id="cdWarnGo" href="#" target="_blank" rel="noopener noreferrer nofollow">開く</a>
+      <button id="cdWarnNo" type="button">やめる</button>
+    </div>
+  </div>
+</dialog>
 
 <script type="module">
 // ───────────────────────────────────────────────────────────────────────────
@@ -1410,7 +1571,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.15.31'
+const APP_VERSION = 'v0.16.0'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1550,6 +1711,10 @@ const CALL_INIT = () => ({
   mailAskAt: new Map(), // peerId → 最後に「いまの募集を教えて」に応じた時刻（同上）
   tab: 'members',       // 通話中に開いているタブ。通話ごとに既定へ戻す（だからここに置く）
   prevTab: 'members',   // 設定を開く直前のタブ（設定タブをもう一度押して戻るため）
+  cardAction: null,     // 名刺（プロフィールカード）のデータチャネル（v0.16.0）
+  cardCache: new Map(), // peerId → サニタイズ済み名刺データ
+  cardReqSeen: new Map(), // peerId → 最後に名刺要求に応じた時刻（連打への自衛）
+  cardViewing: null,    // いま名刺ダイアログで見ている peerId（更新時の描画用）
   capTimer: null,       // 満室判定を少し待つタイマー（相手のプロフィールが届いてから数えるため）
   noticeTimer: null     // 上の通知を自動で畳むタイマー
 })
@@ -2103,6 +2268,267 @@ const lockProfile = on => {
 
 const mySeconds = () => call.joinedId ? Math.floor((performance.now() - call.joinedAt) / 1000) : 0
 
+// ───────── 名刺（プロフィールカード・v0.16.0） ─────────
+// 完全サーバーレス・localStorage 保持・P2P オンデマンド要求（action 'card'）。
+const CARD_KEY = 'pot-call-card'
+const CARD_REQ_MS = 10000     // 同じ相手からの要求に応じる間隔（連打への自衛）
+const loadCard = () => {
+  try { const o = JSON.parse(lsGet(CARD_KEY) || '{}'); return o && typeof o === 'object' ? o : {} }
+  catch { return {} }
+}
+const saveCard = c => lsSet(CARD_KEY, JSON.stringify(c))
+
+// SNS 定義（ID ホワイトリスト方式・URL 自由入力を排除して XSS/フィッシング防止）
+const SNS_DEFS = {
+  x: { name: '𝕏', re: /^[a-zA-Z0-9_]{1,15}$/, url: id => 'https://x.com/' + id },
+  github: { name: 'GitHub', re: /^[a-zA-Z0-9-]{1,39}$/, url: id => 'https://github.com/' + id },
+  note: { name: 'note', re: /^[a-zA-Z0-9_]{3,32}$/, url: id => 'https://note.com/' + id },
+  instagram: { name: 'Instagram', re: /^[a-zA-Z0-9._]{1,30}$/, url: id => 'https://www.instagram.com/' + id + '/' },
+  nostr: { name: 'Nostr', re: /^npub1[0-9a-z]{58}$/, url: id => 'https://njump.me/' + id }
+}
+// お礼・チップ窓口定義
+const TIP_DEFS = {
+  ofuse: { name: 'OFUSE', label: '☕ OFUSE でお礼', re: /^[a-zA-Z0-9_]{1,30}$/, url: id => 'https://ofuse.me/users/' + id },
+  amazon: {
+    name: 'Amazon ほしい物リスト', label: '📦 ほしい物リストでお礼',
+    re: /^[a-zA-Z0-9_.~:/?#[\]@!$&'()*+,;=-]{5,150}$/,
+    url: id => id.startsWith('http') ? id : 'https://www.amazon.jp/hz/wishlist/ls/' + id
+  },
+  zap: { name: 'Nostr Zap', label: '⚡ Zap でお礼 (Sats)', re: /^[a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+$|^npub1[0-9a-z]{58}$/, url: id => 'lightning:' + id },
+  kofi: { name: 'Ko-fi', label: '☕ Ko-fi でお礼', re: /^[a-zA-Z0-9_]{1,30}$/, url: id => 'https://ko-fi.com/' + id },
+  bmac: { name: 'Buy Me a Coffee', label: '🥐 Buy Me Coffee でお礼', re: /^[a-zA-Z0-9_]{1,30}$/, url: id => 'https://buymeacoffee.com/' + id }
+}
+
+// 受け取った名刺データの検証（改造クライアント対策）
+const sanitizeCard = d => {
+  if (!d || typeof d !== 'object') return null
+  const out = {}
+  if (typeof d.bio === 'string') out.bio = capText(d.bio, 60)
+  if (d.socials && typeof d.socials === 'object') {
+    out.socials = {}
+    for (const [k, v] of Object.entries(d.socials)) {
+      const def = SNS_DEFS[k]
+      if (def && typeof v === 'string' && def.re.test(v)) out.socials[k] = v
+    }
+  }
+  if (d.tip && typeof d.tip === 'object' && typeof d.tip.p === 'string' && typeof d.tip.id === 'string') {
+    const tdef = TIP_DEFS[d.tip.p]
+    if (tdef && tdef.re.test(d.tip.id)) out.tip = { p: d.tip.p, id: d.tip.id }
+  }
+  if (d.verified && typeof d.verified === 'object') {
+    out.verified = {}
+    for (const [k, v] of Object.entries(d.verified)) {
+      if (SNS_DEFS[k] && v === true) out.verified[k] = true
+    }
+  }
+  return out
+}
+
+// 自分の名刺送信ペイロード
+const myCardPayload = () => {
+  const c = loadCard()
+  const p = { k: 'res' }
+  if (c.bio) p.bio = capText(c.bio, 60)
+  if (c.tip && c.tip.p && c.tip.id && TIP_DEFS[c.tip.p]?.re.test(c.tip.id)) p.tip = { p: c.tip.p, id: c.tip.id }
+  if (c.socials && typeof c.socials === 'object') {
+    const soc = {}
+    for (const [k, v] of Object.entries(c.socials)) {
+      if (SNS_DEFS[k]?.re.test(v)) soc[k] = v
+    }
+    if (Object.keys(soc).length) p.socials = soc
+  }
+  if (c.verified && typeof c.verified === 'object') {
+    const ver = {}
+    for (const [k, v] of Object.entries(c.verified)) {
+      if (SNS_DEFS[k] && v === true) ver[k] = true
+    }
+    if (Object.keys(ver).length) p.verified = ver
+  }
+  return p
+}
+
+// 名刺ダイアログ（閲覧）の描画
+const renderCardView = (uid, cardData) => {
+  const you = uid === 'self'
+  const p = you ? profile : (call.profiles.get(uid) || {})
+  $('cdEmoji').textContent = p.emoji || '🙂'
+  $('cdName').textContent = p.name || (you ? 'あなた' : 'ゲスト')
+  $('cdState').textContent = you ? '通話中（あなた）' : (call.ignored.has(uid) ? '非表示（無視中）' : '通話中')
+
+  // bio
+  const bio = cardData?.bio || ''
+  $('cdBio').textContent = bio
+  $('cdBio').hidden = !bio
+
+  // お礼
+  const tip = cardData?.tip
+  const tipDef = tip ? TIP_DEFS[tip.p] : null
+  if (tipDef && tip.id) {
+    $('cdTip').hidden = false
+    $('cdTipLink').textContent = tipDef.label
+    $('cdTipLink').href = tipDef.url(tip.id)
+    $('cdTipSub').textContent = tipDef.name + ': ' + tip.id
+  } else {
+    $('cdTip').hidden = true
+  }
+
+  // SNS
+  const soc = cardData?.socials || {}
+  const ver = cardData?.verified || {}
+  const socList = $('cdSocials')
+  socList.replaceChildren()
+  let hasSns = false
+  for (const [k, id] of Object.entries(soc)) {
+    const def = SNS_DEFS[k]
+    if (!def) continue
+    hasSns = true
+    const a = document.createElement('a')
+    a.className = 'cd-sns'
+    a.href = def.url(id)
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer nofollow'
+    const isVer = !!ver[k]
+    const sName = document.createElement('span')
+    sName.textContent = def.name
+    const sId = document.createElement('span')
+    sId.className = 'cd-id'
+    sId.textContent = (k === 'x' ? '@' : '') + id
+    const sBadge = document.createElement('span')
+    sBadge.className = isVer ? 'cd-ok' : 'cd-un'
+    sBadge.textContent = isVer ? '✅' : '未認証'
+    sBadge.title = isVer ? '本人認証済み' : '自己申告'
+    a.append(sName, sId, sBadge)
+    // 未認証リンクの場合は確認モーダルを挟む
+    if (!isVer) {
+      a.onclick = e => {
+        e.preventDefault()
+        openCardWarn(def.name, id, def.url(id))
+      }
+    }
+    socList.appendChild(a)
+  }
+  $('cdSocialsSec').hidden = !hasSns
+
+  // フッター操作
+  $('cdEditBtn').hidden = !you
+  $('cdIgnore').hidden = you
+  if (!you) {
+    $('cdIgnore').textContent = call.ignored.has(uid) ? '🔈 非表示と消音を解除する' : '🛑 この人を非表示 ＆ 消音（自衛）'
+    $('cdIgnore').onclick = () => {
+      if (call.ignored.has(uid)) unignorePeer(uid)
+      else doIgnore(uid)
+      try { $('cardDlg').close() } catch {}
+    }
+  }
+}
+
+// カードを開く
+const openCard = uid => {
+  call.cardViewing = uid
+  if (uid === 'self') {
+    renderCardView('self', myCardPayload())
+  } else {
+    const cached = call.cardCache.get(uid) || null
+    renderCardView(uid, cached)
+    if (call.cardAction && canHear(uid)) {
+      sendTo(call.cardAction, { k: 'req' }, uid)
+    }
+  }
+  try { $('cardDlg').showModal() } catch {}
+}
+const renderCardIfViewing = uid => {
+  if (call.cardViewing === uid && $('cardDlg').open) {
+    renderCardView(uid, call.cardCache.get(uid))
+  }
+}
+$('cdClose').onclick = () => { call.cardViewing = null; $('cardDlg').close() }
+$('cdEditBtn').onclick = () => { $('cardDlg').close(); openCardEdit() }
+
+// 未認証リンク注意モーダル
+const openCardWarn = (serviceName, id, url) => {
+  $('cdWarnTitle').textContent = '⚠️ 未検証の ' + serviceName + ' です'
+  $('cdWarnMsg').textContent = 'このリンク (' + id + ') は本人が所有しているか未検証です。なりすましにご注意ください。'
+  $('cdWarnGo').href = url
+  $('cdWarnGo').onclick = () => { try { $('cardWarnDlg').close() } catch {} }
+  try { $('cardWarnDlg').showModal() } catch { window.open(url, '_blank', 'noopener,noreferrer') }
+}
+$('cdWarnNo').onclick = () => { $('cardWarnDlg').close() }
+
+// 名刺編集モーダルの制御
+const syncBioCount = () => {
+  const len = [...$('ceBio').value].length
+  $('ceBioCnt').textContent = len + '/60'
+  $('ceBioCnt').classList.toggle('over', len > 60)
+}
+$('ceBio').oninput = syncBioCount
+
+const openCardEdit = () => {
+  const c = loadCard()
+  $('ceBio').value = c.bio || ''
+  syncBioCount()
+  const tip = c.tip || {}
+  const tipRadios = document.getElementsByName('ceTipOpt')
+  for (const r of tipRadios) r.checked = (r.value === (tip.p || 'none'))
+  $('ceTip_ofuse').value = tip.p === 'ofuse' ? (tip.id || '') : (c.savedTips?.ofuse || '')
+  $('ceTip_amazon').value = tip.p === 'amazon' ? (tip.id || '') : (c.savedTips?.amazon || '')
+  $('ceTip_zap').value = tip.p === 'zap' ? (tip.id || '') : (c.savedTips?.zap || '')
+  $('ceTip_kofi').value = tip.p === 'kofi' ? (tip.id || '') : (c.savedTips?.kofi || '')
+  $('ceTip_bmac').value = tip.p === 'bmac' ? (tip.id || '') : (c.savedTips?.bmac || '')
+
+  const soc = c.socials || {}
+  const ver = c.verified || {}
+  for (const k of ['x', 'github', 'note', 'instagram', 'nostr']) {
+    const el = $('ceSns_' + k)
+    if (el) el.value = soc[k] || ''
+    const ok = $('ceSnsOk_' + k)
+    if (ok) ok.textContent = ver[k] ? '✅' : ''
+  }
+  try { $('cardEditDlg').showModal() } catch {}
+}
+$('btnOpenCardEdit').onclick = openCardEdit
+$('ceClose').onclick = () => { $('cardEditDlg').close() }
+$('ceCancel').onclick = () => { $('cardEditDlg').close() }
+
+$('ceSave').onclick = () => {
+  const bio = capText($('ceBio').value.trim(), 60)
+  let selTip = 'none'
+  const tipRadios = document.getElementsByName('ceTipOpt')
+  for (const r of tipRadios) { if (r.checked) selTip = r.value }
+
+  const savedTips = {
+    ofuse: $('ceTip_ofuse').value.trim(),
+    amazon: $('ceTip_amazon').value.trim(),
+    zap: $('ceTip_zap').value.trim(),
+    kofi: $('ceTip_kofi').value.trim(),
+    bmac: $('ceTip_bmac').value.trim()
+  }
+
+  let tip = null
+  if (selTip !== 'none') {
+    const id = savedTips[selTip]
+    if (id && TIP_DEFS[selTip]?.re.test(id)) {
+      tip = { p: selTip, id }
+    }
+  }
+
+  const socials = {}
+  for (const k of ['x', 'github', 'note', 'instagram', 'nostr']) {
+    const val = $('ceSns_' + k).value.trim()
+    if (val && SNS_DEFS[k]?.re.test(val)) socials[k] = val
+  }
+
+  const prev = loadCard()
+  const verified = {}
+  if (prev.verified) {
+    for (const [k, v] of Object.entries(prev.verified)) {
+      if (v && socials[k] && socials[k] === prev.socials?.[k]) verified[k] = true
+    }
+  }
+
+  saveCard({ bio, tip, socials, verified, savedTips })
+  $('cardEditDlg').close()
+}
+
 // ── 音声の到着監視 ──────────────────────────────────────────────
 // 「参加者リストには相手が出ているのに、音だけ来ない」ことがある（入り直したあとに起きやすい）。
 // リストに出る＝データチャネルは生きている＝プロフィールは届いている、ということなので、
@@ -2272,9 +2698,14 @@ const emojiEls = new Map()  // uid('self'|peerId) → 現在の絵文字要素�
 // 配信部屋の印と、登壇の切替ボタン（bc）。bc は配信部屋のときだけ渡す。
 //   bc.mark  … 📣＝配信者 / 🎙＝話してよい人 / ''＝聞き役
 //   bc.grant … オーナーの画面にだけ付く切替（{on, title, onClick}）
-const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc) => {
+const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc, onCard) => {
   const row = document.createElement('div'); row.className = 'member' + (isMuted ? ' muted' : '')
   const av = document.createElement('span'); av.className = 'm-emoji'; av.textContent = emoji || '🙂'
+  if (onCard) {
+    av.classList.add('m-tap')
+    av.title = you ? 'あなたの名刺を見る / 編集' : (name || 'この人') + ' の名刺を見る'
+    av.onclick = onCard
+  }
   // ★行の並びは **[アバター][状態][名前][操作]**。**左は見るだけ・右は押すもの**、と役割で分ける
   //   （2026-08-18：見る印と押す印が右端で交互に並んでいて、どれが押せるのか分からなかった）。
   //   状態の枠は**中身が無くても場所を空ける**＝行ごとに名前の左端がずれない。ただし
@@ -2312,6 +2743,7 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc) => {
   const id = document.createElement('span'); id.className = 'm-id'
   const nm = document.createElement('span'); nm.className = 'm-name'
   nm.textContent = name || 'ゲスト'; nm.title = name || 'ゲスト'   // 詰められた分は title で読める
+  if (onCard) { nm.classList.add('m-tap'); nm.onclick = onCard }
   id.append(nm)
   if (stage) { const sg = document.createElement('span'); sg.className = 'm-stage'; sg.textContent = stage; id.append(sg) }
   if (you) { const t = document.createElement('span'); t.className = 'you'; t.textContent = '（あなた）'; id.append(t) }
@@ -2473,7 +2905,7 @@ const renderMembers = () => {
   // **通話中の再描画では触らない**ので、参加者が増減しても流れは残る。
   if (!call.joinedId) { chatLogEl.replaceChildren(); chatLogEl.hidden = true; return }
   const add = (uid, emoji, name, you, isMuted, stage, relay, action, bc) => {
-    const row = memberRow(emoji, name, you, isMuted, stage, relay, action, bc)
+    const row = memberRow(emoji, name, you, isMuted, stage, relay, action, bc, () => openCard(uid))
     emojiEls.set(uid, row.querySelector('.m-emoji'))
     membersEl.appendChild(row)
     return row
@@ -5633,6 +6065,22 @@ const wireRoom = () => {
     flyReaction(peerId, data)
   }
 
+  call.cardAction = call.room.makeAction('card')
+  call.cardAction.onMessage = (data, { peerId }) => {
+    if (!data || typeof data !== 'object') return
+    if (call.ignored.has(peerId)) return   // 無視している相手には名刺を渡さない・受け取らない
+    if (data.k === 'req') {
+      if (tooSoon(call.cardReqSeen, peerId, CARD_REQ_MS)) return   // 連打への自衛
+      sendTo(call.cardAction, myCardPayload(), peerId)
+    } else if (data.k === 'res') {
+      const sc = sanitizeCard(data)
+      if (sc) {
+        call.cardCache.set(peerId, sc)
+        renderCardIfViewing(peerId)
+      }
+    }
+  }
+
   // 顔ぶれが変わったら全員へ（入った直後の相手にも届く）。自分の分は含めない（受け取る側が自分で足している）
   const sendPeers = () => {
     if (call.bcast) return
@@ -5653,6 +6101,8 @@ const wireRoom = () => {
     call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id); sendPeers()
     call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id); call.requests.delete(id)
     call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
+    call.cardCache.delete(id); call.cardReqSeen.delete(id)
+    if (call.cardViewing === id) { call.cardViewing = null; try { $('cardDlg').close() } catch {} }
     call.ttsSent.delete(id); call.ttsSentStream.delete(id); call.ttsResentAt.delete(id)   // 読み上げを配った記録（入り直せば別 ID＝改めて {ok} を待つ）
     if (id === call.ownerPeer && call.ttsAnn) { call.ttsAnn = null; call.ttsTrackIds.clear(); dropAudios('tts'); removeAnalyser('tts') }   // 配信者が抜けた＝仮想行も畳む
     if (id === call.ownerAuthed) { call.ownerAuthed = ''; call.ownerNonce = '' }   // 本人確認済みの配信者が抜けた＝同じ peerId を名乗る別人が来ても必ず確認し直す（v0.15.28）
@@ -5972,6 +6422,7 @@ const resetJoinedUI = () => {
   $('tagRow').hidden = true; $('tagForm').hidden = true   // 話題タグの行（join/leave の対称）
   $('tabChat').classList.remove('unread')                // ひとことの未読の点も持ち越さない
   clearTimeout(leaveConfirmTimer); $('leaveConfirm').hidden = true   // 退出の確認も畳む
+  try { $('cardDlg').close(); $('cardEditDlg').close(); $('cardWarnDlg').close() } catch {}
   // ★退出したら URL から部屋を落とす。参加時に焼き付けたままだと、**次に開いたとき
   //   「共有リンクから来た人」と区別がつかない**（＝最初の画面で「部屋を作る」が開いてしまう。
   //   2026-09-12 に利用者が遭遇）。URL としても、居ない部屋を指したままなのは嘘。
@@ -6083,6 +6534,7 @@ const leaveCall = () => {
   // つなぎ直しの失敗で一度手動で入り直した場合や、枠主が一時退出から戻った場合でも復元できるようにするため。
   // （明示的な登壇解除時は toggleGrant が双方で即時破棄する）
   clearTimeout(call.noticeTimer); showPeerNotice('')            // 前の通知を残さない
+  try { $('cardDlg').close(); $('cardEditDlg').close(); $('cardWarnDlg').close() } catch {}
   if (call.stream) call.stream.getTracks().forEach(t => t.stop())
   ;[...call.audios.keys()].forEach(dropAudios)                 // **reset で Map ごと捨てる前に** DOM を消す
   if (call.wakeLock) call.wakeLock.release().catch(() => {})
