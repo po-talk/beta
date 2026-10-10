@@ -20,6 +20,7 @@ import json
 import urllib.parse
 import os
 import random
+import re
 import shutil
 import string
 import subprocess
@@ -2019,6 +2020,97 @@ def T66(r, room):
     r.check('T66', 'タブを閉じた人の部屋が数秒で一覧から消える', bool(gone) and dt < 10, 'pass', '消えるまで %.1f 秒' % dt)
 
 
+def ntf_viewer(r):
+    """新しい部屋の知らせを受ける閲覧者のタブ（T71・T71b）。Notification をモックしてトグルをオンにし、
+    「ほかの画面を見ている」状態（hasFocus が偽）にして、探索期間（DISCOVER_MS 8 秒）が過ぎるまで待つ。"""
+    c = r.open_tab()
+    c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    shown = c.eval("!document.getElementById('ntfRoomOpt').hidden")
+    c.eval("""(() => {
+      window.__ntf = []
+      window.Notification = class { constructor(t, o) { window.__ntf.push([t, (o || {}).body || '']) } close() {}
+        static get permission() { return 'granted' } static requestPermission() { return Promise.resolve('granted') } }
+      const b = document.getElementById('ntfRoom'); b.checked = true; b.dispatchEvent(new Event('change'))
+      document.hasFocus = () => false
+    })()""")
+    time.sleep(10)
+    return c, shown
+
+
+def T71b(r, room):
+    """ロビー：常設の部屋（ボットが 24 時間いる）は、ボットだけなら「通話中」と数えず知らせもしない。
+    人が入った瞬間に「通話が始まりました」を 1 回知らせ、題名にも数える（v0.15.31）
+
+    数えると題名の印が常時点灯し、ボットの再起動のたびに通知が鳴る。テストはボット役のタブを常設の ID で入れる
+    （テストの appId は本番から隔離されているので、本物の案内役とは混ざらない）。
+    """
+    name = room + 'ST'
+    c, _ = ntf_viewer(r)
+    base0 = c.eval("document.title")
+    b = r.open_tab(hash_='#room=X7fZgwbqs8CqUF8T&name=%s' % urllib.parse.quote(name))
+    b.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    b.wait_for("(() => { const e = document.getElementById('entryTry'); return !!e && !e.hidden && !!e.offsetParent })()", timeout=DISCOVER)
+    b.eval("document.getElementById('entryTry').click()", await_promise=False)
+    listed = c.wait_for('%s.includes(%s)' % (LOBBY, js_str(name)), timeout=DISCOVER)
+    time.sleep(3)
+    base = c.eval("document.title")   # 常設の部屋（ボットだけ）が一覧に出たあとでも、題名は数えていないはず
+    bot_quiet = c.eval("window.__ntf.length") == 0 and base == base0
+    h = r.open_tab()
+    h.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(h, name)
+    got = c.wait_for("window.__ntf.length === 1", timeout=DISCOVER)
+    ntf = c.eval("JSON.stringify(window.__ntf)")
+    c.eval("Object.defineProperty(document, 'hidden', { get: () => false, configurable: true }); document.hasFocus = () => true; dispatchEvent(new Event('focus'))")
+    n_rooms = lambda t: int(re.match(r'● (\d+)部屋で通話中｜', t).group(1)) if re.match(r'● (\d+)部屋で通話中｜', t) else 0
+    counted = n_rooms(c.eval("document.title")) == n_rooms(base) + 1   # ほかのテストの部屋が残っていても増分で見る
+    ok = bool(listed and bot_quiet and got and name in ntf and counted)
+    r.check('T71b', '新しい部屋の知らせ：常設の部屋はボットだけなら数えず知らせない・人が入ったら 1 回知らせて数える', ok, 'pass',
+            '一覧に出た=%s ボットだけは静か=%s 人が入って通知=%s(%s) 数えた=%s' % (bool(listed), bot_quiet, bool(got), ntf, counted))
+    click_leave(h); click_leave(b)
+
+
+def T71(r, room):
+    """ロビー：新しい部屋の知らせ（v0.15.31）。ほかの画面を見ている閲覧者に、OS の通知とタブの題名・アイコンで伝える
+
+    ①通知をオンにした閲覧者は、新しい部屋が始まると OS の通知を 1 回受ける（題名「通話が始まりました」・本文に部屋名）
+    ②見ていない間はタブの題名が「🔔 新しい部屋｜…」、戻ると「● 1部屋で通話中｜…」、アイコンが印つき（data:）に
+    ③その部屋が消えて 2 分以内に戻っても、もう一度は知らせない（裏タブの在室の途切れで誤報を出さない）
+    ④部屋が無くなると題名・アイコンは元に戻る
+    Notification はモック（headless は許可の問い合わせを出せない）、「ほかの画面」は document.hasFocus の差し替えで作る。
+    """
+    name = room + 'NT'
+    c, shown = ntf_viewer(r)
+    base = c.eval("document.title")
+    o = r.open_tab()
+    r.join(o, name)
+    got = c.wait_for("window.__ntf.length >= 1", timeout=DISCOVER)
+    t_first = time.time()
+    ntf = c.eval("JSON.stringify(window.__ntf)")
+    ok1 = bool(got) and '通話が始まりました' in ntf and name in ntf
+    fresh_title = c.eval("document.title").startswith('🔔 新しい部屋｜')
+    fav = c.wait_for("[...document.querySelectorAll('link[rel=icon]')].every(l => l.getAttribute('href').startsWith('data:image/png'))", timeout=10)
+    # 見に戻る＝前に出ていて焦点もある（テストのタブは裏扱いなので document.hidden も差し替える）
+    c.eval("Object.defineProperty(document, 'hidden', { get: () => false, configurable: true }); document.hasFocus = () => true; dispatchEvent(new Event('focus'))")
+    count_title = c.eval("document.title").startswith('● 1部屋で通話中｜')
+    # ③ 退出→一覧から消える→同じ部屋に入り直す（音の間隔 10 秒の外で）
+    room_before = o.eval("new URLSearchParams(location.hash.slice(1)).get('room')")
+    click_leave(o)
+    gone = c.wait_for('!%s.includes(%s)' % (LOBBY, js_str(name)), timeout=20)
+    restored = c.eval("document.title") == base and c.eval("[...document.querySelectorAll('link[rel=icon]')].every(l => !l.getAttribute('href').startsWith('data:'))")
+    c.eval("Object.defineProperty(document, 'hidden', { get: () => true, configurable: true }); document.hasFocus = () => false")
+    time.sleep(max(0, 12 - (time.time() - t_first)))
+    click_join(o)   # 退出しても参加先（pendingHash）は残る＝同じ部屋 ID に入り直す
+    back = c.wait_for('%s.includes(%s)' % (LOBBY, js_str(name)), timeout=DISCOVER)
+    time.sleep(3)
+    same_room = o.eval("new URLSearchParams(location.hash.slice(1)).get('room')") == room_before
+    quiet = c.eval("window.__ntf.length") == 1
+    ok = bool(shown and ok1 and fresh_title and fav and count_title and gone and restored and back and same_room and quiet)
+    r.check('T71', '新しい部屋の知らせ：通知 1 回・題名とアイコンの印・消えてすぐ戻った部屋は知らせない・無くなれば元に戻る', ok, 'pass',
+            'トグル表示=%s 通知=%s 🔔題名=%s 印アイコン=%s ●題名=%s 消えた=%s 元に戻った=%s 戻った=%s 同じ部屋=%s 再通知なし=%s'
+            % (shown, ntf, fresh_title, bool(fav), count_title, bool(gone), restored, bool(back), same_room, quiet))
+    click_leave(o)
+
+
 def T70(r):
     """配信者の本人確認（oath・v0.15.28）：配信者が抜けた後に同じ peerId を名乗る改造クライアントが来ても、
     新入りはそれを配信者として扱わない（📣 なし・配信者専用のおたより非表示・音 0）。正規の聞き役は従来どおり 📣。
@@ -3008,6 +3100,10 @@ def main():
             T69(r, room)
         if run('T70'):
             T70(r)
+        if run('T71'):
+            T71(r, room)
+        if run('T71b'):
+            T71b(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
