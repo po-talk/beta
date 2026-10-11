@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.0
+  ぽっと通話〈実験版〉 v0.16.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -238,6 +238,16 @@
     font-weight:700; font-size:14px; text-decoration:none }
   .cd-tip .cd-tip-sub{ display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:var(--sub); word-break:break-all }
   .help-dialog p.cd-tip-note{ margin:6px 0 0; font-size:12px; color:var(--note); line-height:1.5 }
+  .help-dialog p.cd-tip-trust{ margin:8px 0 0; font-size:12.5px; color:var(--text); line-height:1.5 }
+  .cd-tip.weak{ border-color:var(--border-soft); background:var(--panel) }
+  .cd-tip.weak a{ background:var(--chip); color:var(--chip-fg) !important; font-weight:600 }
+  .cd-verify{ margin:0 0 12px }
+  .cd-verify button{ width:100%; margin:0; padding:9px 12px; font-size:13px; font-weight:700; border-radius:9px; background:var(--accent-dim); color:var(--link); border:1px solid var(--link); cursor:pointer }
+  .cd-verify button:disabled{ opacity:.6; cursor:progress }
+  .help-dialog p.cd-verify-msg{ margin:6px 0 0; font-size:12px; color:var(--note); line-height:1.5 }
+  .cd-sns .cd-un.claim{ color:var(--warn); border:1px solid var(--warn-border) }
+  #cardWarnDlg.ok #cdWarnGo{ background:var(--join-bg); color:var(--join-fg) !important }
+  .m-tap:focus-visible, .cl-tap:focus-visible, .cl-row.pick .cl-who:focus-visible{ outline:2px solid var(--link); outline-offset:2px; border-radius:4px }
   .cd-sec{ margin:10px 0 6px; font-size:12px; font-weight:700; color:var(--sub) }
   .cd-socials{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px }
   .cd-sns{ display:inline-flex; align-items:center; gap:6px; max-width:100%; box-sizing:border-box; width:auto; margin:0; padding:7px 12px; border-radius:10px; font-size:13px; font-weight:600;
@@ -789,6 +799,7 @@
   .cl-row.pick{ background:var(--chip) }
   .cl-ig{ flex:none; width:18px; height:18px; padding:0; margin:0; border:0; background:transparent; cursor:pointer;
     color:var(--red); display:none; align-items:center; justify-content:center; align-self:center }
+  .cl-ig svg{ width:14px; height:14px; display:block }
   .cl-row.pick .cl-ig, .cl-ign .cl-ig{ display:inline-flex }
   .cl-tap{ cursor:pointer }
   .cl-row.pick .cl-em, .cl-row.pick .cl-who{ cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px }
@@ -1449,11 +1460,16 @@
   <div class="cd-tip" id="cdTip" hidden>
     <a id="cdTipLink" href="#" target="_blank" rel="noopener noreferrer nofollow">お礼を贈る</a>
     <div class="cd-tip-sub" id="cdTipSub"></div>
+    <p class="cd-tip-trust" id="cdTipTrust" hidden></p>
     <p class="cd-tip-note">※ お礼リンクは本人が設定したものです（運営は確認していません）</p>
   </div>
   <div id="cdSocialsSec" hidden>
     <div class="cd-sec">SNS・アカウント</div>
     <div class="cd-socials" id="cdSocials"></div>
+  </div>
+  <div class="cd-verify" id="cdVerify" hidden>
+    <button id="cdVerifyBtn" type="button">✅ を確かめる</button>
+    <p class="cd-verify-msg" id="cdVerifyMsg"></p>
   </div>
   <div class="cd-foot">
     <p class="cd-foot-note">※ P2Pオンデマンド名刺交換（サーバー不保持）</p>
@@ -1511,7 +1527,7 @@
     <span class="ce-name">🥐 Buy Me Coffee</span>
     <input type="text" id="ceTip_bmac" placeholder="URL または ユーザ名" autocomplete="off" maxlength="100">
   </div>
-  <p class="ce-note">※ Amazonほしい物リストは配送先の本名や住所バレにご注意ください。<br>※ URLを貼ると自動でIDに切り詰めます（形式不一致は赤枠）。</p>
+  <p class="ce-note">※ Amazonほしい物リストは配送先の本名や住所バレにご注意ください。短縮 URL（amzn.asia など）は使えないので、一度開いて表示された URL を貼ってください。<br>※ URLを貼ると自動でIDに切り詰めます（形式不一致は赤枠）。</p>
 
   <label class="ce-lbl">SNS ID（オプトイン本人確認対応）</label>
   <div class="ce-row">
@@ -1542,7 +1558,9 @@
     <button class="ce-ver-btn" id="ceBtnVer_nostr" type="button" title="拡張機能で本人確認">認証</button>
     <span class="ce-ver-badge" id="ceVerBadge_nostr" title="認証済み（タップで解除）" hidden>✅</span>
   </div>
-  <p class="ce-note">※ 各サービスのプロフィールURLを貼ると自動でIDに切り詰めます。「認証」を押して本人確認すると ✅ バッジが点灯します。</p>
+  <p class="ce-note">※ 各サービスのプロフィールURLを貼ると自動でIDに切り詰めます。「認証」で本人確認すると、相手が「✅ を確かめる」を押したときに ✅ が付きます。<br>※ ブラウザのデータを消すと名刺の鍵が変わり、もう一度認証が必要です。</p>
+
+  <label class="ce-none"><input type="checkbox" id="ceNoImg"> 相手の名刺の画像を表示しない（絵文字だけにする）</label>
 
   <p id="ceWarn" class="ce-warn-text" hidden></p>
 
@@ -1560,12 +1578,11 @@
 
   <div id="caCodeSec">
     <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px">
-      <label class="ce-lbl" style="margin:0">確認用コード</label>
-      <button id="caRefreshCode" class="ca-text-btn" type="button">🔄 別のコードに変更</button>
+      <label class="ce-lbl" style="margin:0">あなたの名刺の鍵</label>
     </div>
     <div class="ca-code-box">
       <code id="caCode"></code>
-      <button id="caCopyCode" class="ca-copy-btn" type="button">📋 コードをコピー</button>
+      <button id="caCopyCode" class="ca-copy-btn" type="button">📋 鍵の行をコピー</button>
     </div>
   </div>
 
@@ -1664,7 +1681,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.0'
+const APP_VERSION = 'v0.16.1'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1808,6 +1825,9 @@ const CALL_INIT = () => ({
   cardCache: new Map(), // peerId → サニタイズ済み名刺データ
   cardReqSeen: new Map(), // peerId → 最後に名刺要求に応じた時刻（連打への自衛）
   cardViewing: null,    // いま名刺ダイアログで見ている peerId（更新時の描画用）
+  cardVer: new Map(),   // peerId → 受け手が確かめた結果（v0.16.1・通話セッションの間だけ）
+  cardAsk: new Map(),   // peerId → 名刺の鍵への問い返し（{n, answer}）
+  cardAskAt: new Map(), // peerId → 最後に問い返しへ署名した時刻（連打で署名を走らされないよう間引く）
   capTimer: null,       // 満室判定を少し待つタイマー（相手のプロフィールが届いてから数えるため）
   noticeTimer: null     // 上の通知を自動で畳むタイマー
 })
@@ -2370,6 +2390,102 @@ const loadCard = () => {
   catch { return {} }
 }
 const saveCard = c => lsSet(CARD_KEY, JSON.stringify(c))
+const CARD_NOIMG_KEY = 'pot-call-card-noimg'   // 「相手の名刺の画像を表示しない」（v0.16.1）
+
+// ── 名刺の鍵（v0.16.1）──
+// SNS の本人確認を「受け手が自分で確かめられる」形にするための鍵（ECDSA P-256・配信鍵とは別）。
+// ★**取り出せない鍵**（extractable:false）を IndexedDB に置く。localStorage は文字列しか置けないので
+//   鍵の中身を文字にするしかなく、同じサイトで動く悪いスクリプトに持ち去られる。取り出せない鍵なら、
+//   悪用されても「本人がページを開いている間、そのブラウザの中で署名させる」までで、持ち去って後から
+//   別の場所でなりすますことはできない。代わりに**書き出し・移行は原理的にできない**＝鍵をなくしたら
+//   再認証（利用者の決定・10-11）。本番と β はオリジンが違うので別の鍵になる。
+// SNS 側の証拠（X の投稿・GitHub の bio・Nostr の署名）には、この鍵の指紋 `potalk1-<22文字>` を載せる。
+// 受け手は ①問い返しに鍵で署名させ（持ち主か）②証拠に同じ指紋があるか、の両方を確かめる＝証拠を写しただけの
+// 人は ① で落ちる。① の署名文には部屋・問う側・答える側の peerId を入れる＝問い返しの横流し（偽者が本人へ
+// 問いを回して答えを持ち帰る）を防ぐ（本人の署名には本人の peerId が入るので、偽者経由では一致しない）。
+const CARD_IDB = 'pot-call-keys', CARD_IDB_STORE = 'keys'
+const idbReq = (mode, fn) => new Promise((res, rej) => {
+  const o = indexedDB.open(CARD_IDB, 1)
+  o.onupgradeneeded = () => o.result.createObjectStore(CARD_IDB_STORE)
+  o.onerror = () => rej(o.error)
+  o.onsuccess = () => {
+    const db = o.result
+    try {
+      const q = fn(db.transaction(CARD_IDB_STORE, mode).objectStore(CARD_IDB_STORE))
+      q.onsuccess = () => { res(q.result); db.close() }
+      q.onerror = () => { rej(q.error); db.close() }
+    } catch (e) { db.close(); rej(e) }
+  }
+})
+const fpLine = fp => 'potalk1-' + fp            // 証拠に載せる指紋の書式
+let cardKeyRec = null                           // {priv: CryptoKey(取り出せない), pub: 公開鍵 b64url, fp}
+// create=false は読むだけ（無ければ null）。鍵を作るのは本人確認を始めたときだけ
+const cardKeyLoad = async create => {
+  if (cardKeyRec) return cardKeyRec
+  let v = await idbReq('readonly', st => st.get('card')).catch(() => null)
+  if (!(v && v.priv && v.pub)) {
+    if (!create) return null
+    const kp = await crypto.subtle.generateKey(ECDSA, false, ['sign', 'verify'])   // 秘密鍵は取り出せない（公開鍵は常に書き出せる）
+    v = { priv: kp.privateKey, pub: b64u(await crypto.subtle.exportKey('raw', kp.publicKey)), at: Date.now() }
+    // add＝既にあれば失敗する（別タブが同時に作った場合はそちらを使う）
+    await idbReq('readwrite', st => st.add(v, 'card')).catch(() => {})
+    const again = await idbReq('readonly', st => st.get('card')).catch(() => null)
+    if (again && again.priv && again.pub) v = again
+    try { navigator.storage?.persist?.() } catch {}   // 消されにくくする（保証はされない・best-effort）
+  }
+  cardKeyRec = { priv: v.priv, pub: v.pub, fp: await fpOf(v.pub) }
+  return cardKeyRec
+}
+cardKeyLoad(false).catch(() => {})
+const CARD_NOSTR_KIND = 30078                   // NIP-78（アプリ固有のデータ）。公開はしない（名刺に入れて手渡すだけ）
+const cardAuthMsg = (room, asker, responder, n) => 'card\n' + room + '\n' + asker + '\n' + responder + '\n' + n
+
+// 証拠の確認（受け手も持ち主も同じ関数を使う）。返り値 {ok, why}。why は失敗の理由（持ち主の画面の案内用）
+const checkGithubProof = async (id, line) => {
+  const res = await fetch('https://api.github.com/users/' + encodeURIComponent(id), { headers: { Accept: 'application/vnd.github+json' } })
+  if (!res.ok) return { ok: false, why: res.status === 404 ? 'notfound' : res.status === 403 || res.status === 429 ? 'limit' : 'http' }
+  const d = await res.json()
+  if (String(d.login || '').toLowerCase() !== id.toLowerCase()) return { ok: false, why: 'notfound' }
+  return String(d.bio || '').includes(line) ? { ok: true } : { ok: false, why: 'nocode' }
+}
+// ★X の oEmbed は URL 中のユーザー名を無視し、投稿 ID だけで投稿を引く（x.com/github/status/20 で jack の投稿が返る・
+//   10-11 に実測）。投稿者は**応答の author_url**で確かめる（URL のパスを信じると他人の名前で ✅ が取れる）
+const checkXProof = async (id, sid, line) => {
+  const res = await fetch('https://publish.x.com/oembed?omit_script=1&url=' + encodeURIComponent('https://x.com/' + id + '/status/' + sid))
+  if (!res.ok) return { ok: false, why: 'http' }
+  const d = await res.json()
+  const h = (String(d.author_url || '').match(/^https:\/\/(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/?$/) || [])[1]
+  if (!h || h.toLowerCase() !== id.toLowerCase()) return { ok: false, why: 'author' }
+  return String(d.html || '').includes(line) ? { ok: true } : { ok: false, why: 'nocode' }
+}
+const npubHex = (nt, npub) => { try { const r = nt.nip19.decode(npub); return r.type === 'npub' ? r.data : '' } catch { return '' } }
+// Nostr：名刺の鍵の指紋を content に入れた kind 30078 のイベントに、その npub の鍵で署名したもの（NIP-07 で作る）
+const checkNostrProof = async (npub, ev, line) => {
+  if (!ev || typeof ev !== 'object') return { ok: false, why: 'none' }
+  const nt = await loadNostr()
+  const hex = npubHex(nt, npub)
+  if (!hex || ev.pubkey !== hex) return { ok: false, why: 'author' }
+  if (ev.kind !== CARD_NOSTR_KIND || !Array.isArray(ev.tags) || !ev.tags.some(t => Array.isArray(t) && t[0] === 'd' && t[1] === 'potalk-card')) return { ok: false, why: 'shape' }
+  if (typeof ev.content !== 'string' || !ev.content.includes(line)) return { ok: false, why: 'nocode' }
+  let ok = false
+  try { ok = nt.verifyEvent({ ...ev }) } catch {}
+  return ok ? { ok: true } : { ok: false, why: 'sig' }
+}
+// Zap の行き先：Nostr の本人確認が通った npub の、公開プロフィール（kind 0）の受け取りアドレス（lud16）と一致するか。
+// tip が npub そのものなら、その npub と一致するか。プロフィールは公開 Nostr リレーから読む（署名は SimplePool が検証する）
+const checkZapDest = async (hex, tipId) => {
+  const nt = await loadNostr()
+  if (tipId.startsWith('npub1')) return npubHex(nt, tipId) === hex
+  nostrPool ??= new nt.SimplePool()
+  const ev = await Promise.race([
+    nostrPool.get(NOSTR_RELAYS.slice(0, 4), { kinds: [0], authors: [hex] }, { maxWait: 5000 }),
+    new Promise(r => setTimeout(() => r(null), 6000))
+  ]).catch(() => null)
+  if (!ev || ev.pubkey !== hex) return false
+  let meta = {}
+  try { meta = JSON.parse(ev.content) || {} } catch {}
+  return typeof meta.lud16 === 'string' && meta.lud16.trim().toLowerCase() === tipId.toLowerCase()
+}
 
 // 無視の切替アイコン。**塗り＝受け取っている／割れた輪郭＝受け取っていない**。
 // 経路アイコン（☁️/↔）と同じく「いまの状態」を表す絵で、押すと入れ替わる。
@@ -2453,16 +2569,18 @@ const TIP_DEFS = {
   },
   amazon: {
     name: 'Amazon ほしい物リスト', label: '📦 ほしい物リストでお礼',
-    re: /^[a-zA-Z0-9]{10,20}$|^https:\/\/amzn\.(?:asia|to)\/[a-zA-Z0-9_/-]+$/,
+    // ★ID だけを記憶して送る（「URL を送らない」原則・PROTOCOL §11）。短縮 URL（amzn.asia / amzn.to）は
+    //   ブラウザから展開できない（転送の応答が他サイトからの読み取りを許可していない＝CORS なし・10-11 に確認）。
+    //   展開に中継サーバを立てるのはサーバを持たない方針に反するので、開いて出た URL を貼ってもらう
+    re: /^[a-zA-Z0-9]{10,20}$/,
     parse: s => {
       s = s.trim()
-      const m = s.match(/(?:https?:\/\/)?(?:www\.)?amazon\.(?:co\.jp|jp|com)\/hz\/wishlist\/ls\/([a-zA-Z0-9]{10,20})/i)
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?amazon\.(?:co\.jp|jp|com)\/(?:-\/[a-z]{2}\/)?hz\/wishlist\/ls\/([a-zA-Z0-9]{10,20})/i)
       if (m) return m[1]
-      const mShort = s.match(/^https?:\/\/(amzn\.(?:asia|to)\/[a-zA-Z0-9_/-]+?)(?:\?.*)?$/i)
-      if (mShort) return 'https://' + mShort[1]
       return /^[a-zA-Z0-9]{10,20}$/.test(s) ? s : null
     },
-    url: id => id.startsWith('http') ? id : 'https://www.amazon.co.jp/hz/wishlist/ls/' + id
+    hint: s => /amzn\.(?:asia|to)\//i.test(s) ? '短縮 URL（amzn.asia など）は使えません。一度開いて、表示された URL（…/hz/wishlist/ls/…）を貼ってください' : '',
+    url: id => 'https://www.amazon.co.jp/hz/wishlist/ls/' + id
   },
   zap: {
     name: 'Nostr Zap', label: '⚡ Zap でお礼 (Sats)',
@@ -2473,7 +2591,8 @@ const TIP_DEFS = {
       const m = s.match(/npub1[0-9a-z]{58}/i)
       return m ? m[0].toLowerCase() : null
     },
-    url: id => 'lightning:' + id
+    // npub は lightning: の宛先にならない（lud16 のアドレスだけが送金先）。npub は Nostr のプロフィールを開いてそこから Zap してもらう
+    url: id => id.startsWith('npub1') ? 'https://njump.me/' + id : 'lightning:' + id
   },
   kofi: {
     name: 'Ko-fi', label: '☕ Ko-fi でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
@@ -2498,13 +2617,24 @@ const TIP_DEFS = {
 }
 
 // 受け取った名刺データの検証（改造クライアント対策）
+// ★画像は webp / jpeg / png の base64 だけ（SVG は受けない・PROTOCOL §11.2）。表示の前に canvas で描き直す（redrawAvatar）
+const AVATAR_RE = /^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/
+const HEX_RE = n => new RegExp('^[0-9a-f]{' + n + '}$')
+const HEX64 = HEX_RE(64), HEX128 = HEX_RE(128)
+// Nostr の証拠イベントは形だけ確かめて持つ（署名の検証は「✅ を確かめる」のとき）。大きさも抑える
+const sanitizeNostrEv = ev => {
+  if (!ev || typeof ev !== 'object') return null
+  const { id, pubkey, sig, kind, created_at, tags, content } = ev
+  if (!HEX64.test(id || '') || !HEX64.test(pubkey || '') || !HEX128.test(sig || '')) return null
+  if (kind !== CARD_NOSTR_KIND || !Number.isInteger(created_at) || typeof content !== 'string' || content.length > 200) return null
+  if (!Array.isArray(tags) || tags.length > 4 || !tags.every(t => Array.isArray(t) && t.length <= 4 && t.every(x => typeof x === 'string' && x.length <= 64))) return null
+  return { id, pubkey, sig, kind, created_at, tags: tags.map(t => [...t]), content }
+}
 const sanitizeCard = d => {
   if (!d || typeof d !== 'object') return null
   const out = {}
   if (typeof d.bio === 'string') out.bio = capText(d.bio, 60)
-  if (typeof d.avatar === 'string' && d.avatar.startsWith('data:image/') && d.avatar.length <= 40000) {
-    out.avatar = d.avatar
-  }
+  if (typeof d.avatar === 'string' && d.avatar.length <= 40000 && AVATAR_RE.test(d.avatar)) out.avatar = d.avatar
   if (d.socials && typeof d.socials === 'object') {
     out.socials = {}
     for (const [k, v] of Object.entries(d.socials)) {
@@ -2516,23 +2646,48 @@ const sanitizeCard = d => {
     const tdef = TIP_DEFS[d.tip.p]
     if (tdef && tdef.re.test(d.tip.id)) out.tip = { p: d.tip.p, id: d.tip.id }
   }
-  if (d.verified && typeof d.verified === 'object') {
-    out.verified = {}
-    for (const [k, v] of Object.entries(d.verified)) {
-      if (SNS_DEFS[k] && v === true) out.verified[k] = true
-    }
+  // 名刺の鍵（公開鍵）と、SNS ごとの証拠（X＝投稿 ID・GitHub＝bio に載せた印・Nostr＝署名イベント）
+  if (typeof d.ck === 'string' && B64U_RE.test(d.ck)) out.ck = d.ck
+  if (d.pr && typeof d.pr === 'object') {
+    out.pr = {}
+    if (typeof d.pr.x === 'string' && /^\d{1,25}$/.test(d.pr.x)) out.pr.x = d.pr.x
+    if (d.pr.github === 1) out.pr.github = 1
+    const ev = sanitizeNostrEv(d.pr.nostr)
+    if (ev) out.pr.nostr = ev
   }
+  // 「認証済み」の自己申告（v0.16.0 の形）。**主張としてだけ**受け取り、✅ は出さない（「要確認」にする・決定 14）
+  out.claims = {}
+  if (d.verified && typeof d.verified === 'object') {
+    for (const [k, v] of Object.entries(d.verified)) if (SNS_DEFS[k] && v === true) out.claims[k] = true
+  }
+  if (out.pr) for (const k of Object.keys(out.pr)) out.claims[k] = true
   return out
 }
+// 受け取った画像は、受け取ったバイト列のまま表示しない。一度 canvas に描いて JPEG に作り直す（PROTOCOL §11.2）
+const redrawAvatar = src => new Promise(res => {
+  const img = new Image()
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 128
+      c.getContext('2d').drawImage(img, 0, 0, 128, 128)
+      res(c.toDataURL('image/jpeg', 0.85))
+    } catch { res(null) }
+  }
+  img.onerror = () => res(null)
+  img.src = src
+})
 
-// 自分の名刺送信ペイロード
+// 持ち主の画面で「この SNS の証拠はいまの鍵・いまの ID と合っているか」
+const ownProofOk = (c, k) => {
+  const pf = c.proofs?.[k]
+  return !!(pf && cardKeyRec && pf.fp === cardKeyRec.fp && pf.id && pf.id === c.socials?.[k])
+}
+// 自分の名刺送信ペイロード（鍵が読めていれば公開鍵と証拠も付ける。「認証済み」の自己申告は送らない）
 const myCardPayload = () => {
   const c = loadCard()
   const p = { k: 'res' }
   if (c.bio) p.bio = capText(c.bio, 60)
-  if (c.avatar && typeof c.avatar === 'string' && c.avatar.startsWith('data:image/') && c.avatar.length <= 40000) {
-    p.avatar = c.avatar
-  }
+  if (typeof c.avatar === 'string' && c.avatar.length <= 40000 && AVATAR_RE.test(c.avatar)) p.avatar = c.avatar
   if (c.tip && c.tip.p && c.tip.id && TIP_DEFS[c.tip.p]?.re.test(c.tip.id)) p.tip = { p: c.tip.p, id: c.tip.id }
   if (c.socials && typeof c.socials === 'object') {
     const soc = {}
@@ -2541,12 +2696,13 @@ const myCardPayload = () => {
     }
     if (Object.keys(soc).length) p.socials = soc
   }
-  if (c.verified && typeof c.verified === 'object') {
-    const ver = {}
-    for (const [k, v] of Object.entries(c.verified)) {
-      if (SNS_DEFS[k] && v === true) ver[k] = true
-    }
-    if (Object.keys(ver).length) p.verified = ver
+  if (cardKeyRec) {
+    p.ck = cardKeyRec.pub
+    const pr = {}
+    if (ownProofOk(c, 'x') && /^\d{1,25}$/.test(c.proofs.x.sid || '')) pr.x = c.proofs.x.sid
+    if (ownProofOk(c, 'github')) pr.github = 1
+    if (ownProofOk(c, 'nostr') && c.proofs.nostr.ev) pr.nostr = c.proofs.nostr.ev
+    if (Object.keys(pr).length) p.pr = pr
   }
   return p
 }
@@ -2559,19 +2715,92 @@ const shortenNpub = s => {
   return s
 }
 
+// ── 受け手の本人確認（v0.16.1）──
+// 押したとき（「✅ を確かめる」かお礼を押したとき）だけ確かめる。開いた瞬間に X 等へ問い合わせない
+// （受け手の IP が外部サービスに渡るため・10-11 の合意）。結果は通話セッションの間だけ覚える（peerId ごと）
+const cardHasClaims = c => !!c && Object.keys(c.claims || {}).length > 0
+// 問い返し：乱数に名刺の鍵で署名させる。8 秒で諦める
+const cardChallenge = (uid, ck) => new Promise(resolve => {
+  const nb = new Uint8Array(16); crypto.getRandomValues(nb)
+  const n = b64u(nb), room = call.joinedId
+  const done = ok => { if (call.cardAsk.get(uid)?.n === n) call.cardAsk.delete(uid); resolve(ok) }
+  const timer = setTimeout(() => done(false), 8000)
+  call.cardAsk.set(uid, {
+    n,
+    answer: sig => {
+      clearTimeout(timer)
+      importVerify(ck)
+        .then(key => key && crypto.subtle.verify(SIGN_ALG, key, unb64u(sig), enc(cardAuthMsg(room, myPeerId, uid, n))))
+        .then(ok => done(!!ok && room === call.joinedId)).catch(() => done(false))
+    }
+  })
+  sendTo(call.cardAction, { k: 'q', n }, uid)
+})
+const verifyCard = uid => {
+  const c = call.cardCache.get(uid)
+  if (!c || !call.joinedId) return Promise.resolve(null)
+  const cur = call.cardVer.get(uid)
+  if (cur && cur.state === 'checking') return cur.p
+  const st = { state: 'checking', key: false, old: false, svc: {}, zap: '' }
+  call.cardVer.set(uid, st)
+  renderCardIfViewing(uid)
+  st.p = (async () => {
+    if (!c.ck) { st.old = true; return }   // 鍵を持たない名刺（v0.16.0 の自己申告など）＝確かめようがない
+    st.key = await cardChallenge(uid, c.ck)
+    if (!st.key) return                    // 鍵の持ち主ではない＝証拠を見ても意味がない（写しただけの人）
+    const line = fpLine(await fpOf(c.ck)), soc = c.socials || {}, pr = c.pr || {}
+    const run = async (k, f) => {
+      if (!soc[k] || pr[k] == null) { if (c.claims?.[k]) st.svc[k] = 'ng'; return }
+      try { st.svc[k] = (await f()).ok ? 'ok' : 'ng' } catch { st.svc[k] = 'err' }
+    }
+    await Promise.all([
+      run('x', () => checkXProof(soc.x, pr.x, line)),
+      run('github', () => checkGithubProof(soc.github, line)),
+      run('nostr', () => checkNostrProof(soc.nostr, pr.nostr, line)),
+    ])
+    for (const k of Object.keys(c.claims || {})) if (!st.svc[k]) st.svc[k] = 'ng'
+    // Zap の行き先：確認できた Nostr アカウントのものか（決定 9）
+    if (c.tip?.p === 'zap') {
+      if (st.svc.nostr === 'ok') {
+        try { st.zap = (await checkZapDest(pr.nostr.pubkey, c.tip.id)) ? 'ok' : 'ng' } catch { st.zap = 'err' }
+      } else st.zap = 'ng'
+    }
+  })().catch(() => {}).then(() => {
+    st.state = 'done'
+    if (call.cardVer.get(uid) === st) renderCardIfViewing(uid)
+    return st
+  })
+  return st.p
+}
+// お礼の表示の強さ（決定 8）。strong＝ふつうに出す／weak＝控えめにして、押すと一度確認を挟む
+const tipTrust = uid => {
+  if (uid === 'self') return { strong: true, text: '' }
+  if (call.bcast && ownerOk(uid)) return { strong: true, text: '📣 この部屋の配信者のお礼窓口です（部屋の鍵で本人と確認済み）' }
+  const c = call.cardCache.get(uid) || {}, st = call.cardVer.get(uid)
+  const okK = st?.state === 'done' && st.key ? Object.keys(st.svc).find(k => st.svc[k] === 'ok') : ''
+  if (!okK) return { strong: false, text: '' }
+  const who = SNS_DEFS[okK].name + ' ' + (okK === 'x' ? '@' : '') + shortenNpub(c.socials[okK])
+  if (c.tip?.p === 'zap' && st.zap !== 'ok') return { strong: false, text: '⚠️ ' + who + ' は確認できましたが、Zap の行き先がこの人の Nostr アカウントのものか確認できません' }
+  return { strong: true, text: '✅ ' + who + '（確認済み）の人の窓口です' + (c.tip?.p === 'zap' ? '。Zap の行き先もこの人のものと確認しました' : '') }
+}
+const VER_LABEL = { ok: '✅', checking: '確認中…', ng: '確認できません', err: '確認できません', claim: '要確認', none: '未認証' }
+
 // 名刺ダイアログ（閲覧）の描画
 const renderCardView = (uid, cardData) => {
   const you = uid === 'self'
   const p = you ? profile : (call.profiles.get(uid) || {})
   const emoji = p.emoji || '🙂'
-  const avatar = cardData?.avatar
-  if (avatar && typeof avatar === 'string' && avatar.startsWith('data:image/') && avatar.length <= 40000) {
+  // 画像：自分のは手元のもの。相手のは描き直したもの（avatarSafe）だけ。無視している相手・「画像を表示しない」なら出さない
+  const avatar = you ? cardData?.avatar
+    : (call.ignored.has(uid) || lsGet(CARD_NOIMG_KEY) === '1' ? null : cardData?.avatarSafe)
+  if (avatar && typeof avatar === 'string' && avatar.startsWith('data:image/') && avatar.length <= 60000) {
     $('cdAvatar').src = avatar
     $('cdAvatar').hidden = false
     $('cdEmoji').hidden = true
     $('cdSubEmoji').textContent = emoji
     $('cdSubEmoji').hidden = false
   } else {
+    $('cdAvatar').removeAttribute('src')
     $('cdEmoji').textContent = emoji
     $('cdEmoji').hidden = false
     $('cdAvatar').hidden = true
@@ -2585,21 +2814,26 @@ const renderCardView = (uid, cardData) => {
   $('cdBio').textContent = bio
   $('cdBio').hidden = !bio
 
+  const st = you ? null : call.cardVer.get(uid)
   // お礼
   const tip = cardData?.tip
   const tipDef = tip ? TIP_DEFS[tip.p] : null
   if (tipDef && tip.id) {
+    const tr = tipTrust(uid)
     $('cdTip').hidden = false
+    $('cdTip').classList.toggle('weak', !tr.strong)
     $('cdTipLink').textContent = tipDef.label
     $('cdTipLink').href = tipDef.url(tip.id)
     $('cdTipSub').textContent = tipDef.name + ': ' + shortenNpub(tip.id)
+    $('cdTipTrust').textContent = tr.text
+    $('cdTipTrust').hidden = !tr.text
   } else {
     $('cdTip').hidden = true
   }
 
-  // SNS
+  // SNS（✅ は**受け手がこのセッションで確かめたもの**だけ。自分の名刺は自分の端末の確認結果）
   const soc = cardData?.socials || {}
-  const ver = cardData?.verified || {}
+  const own = you ? loadCard() : null
   const socList = $('cdSocials')
   socList.replaceChildren()
   let hasSns = false
@@ -2607,12 +2841,15 @@ const renderCardView = (uid, cardData) => {
     const def = SNS_DEFS[k]
     if (!def) continue
     hasSns = true
+    const state = you ? (ownProofOk(own, k) ? 'ok' : 'none')
+      : st?.svc?.[k] ? st.svc[k]
+      : cardData?.claims?.[k] ? (st?.state === 'checking' ? 'checking' : st?.state === 'done' ? 'ng' : 'claim')
+      : 'none'
     const a = document.createElement('a')
     a.className = 'cd-sns'
     a.href = def.url(id)
     a.target = '_blank'
     a.rel = 'noopener noreferrer nofollow'
-    const isVer = !!ver[k]
     const sName = document.createElement('span')
     sName.textContent = def.name
     const sId = document.createElement('span')
@@ -2620,20 +2857,35 @@ const renderCardView = (uid, cardData) => {
     sId.textContent = (k === 'x' ? '@' : '') + shortenNpub(id)
     sId.title = id
     const sBadge = document.createElement('span')
-    sBadge.className = isVer ? 'cd-ok' : 'cd-un'
-    sBadge.textContent = isVer ? '✅' : '未認証'
-    sBadge.title = isVer ? '本人認証済み' : '自己申告'
+    sBadge.className = state === 'ok' ? 'cd-ok' : 'cd-un' + (state === 'claim' ? ' claim' : '')
+    sBadge.textContent = VER_LABEL[state]
+    sBadge.title = state === 'ok' ? (you ? 'あなたの端末で本人確認済み' : 'この通話で本人確認しました')
+      : state === 'claim' ? '本人は認証済みと言っています。「✅ を確かめる」で確かめられます'
+      : state === 'none' ? '自己申告' : '確かめましたが、本人のものと確認できませんでした'
     a.append(sName, sId, sBadge)
-    // 未認証リンクの場合は確認モーダルを挟む
-    if (!isVer) {
-      a.onclick = e => {
-        e.preventDefault()
-        openCardWarn(def.name, id, def.url(id))
-      }
+    if (state !== 'ok') {   // ✅ 以外は開く前に注意を挟む
+      a.onclick = e => { e.preventDefault(); openCardWarn(def.name, id, def.url(id), state) }
     }
     socList.appendChild(a)
   }
   $('cdSocialsSec').hidden = !hasSns
+
+  // 「✅ を確かめる」：自己申告の「認証済み」か証拠がある相手の名刺にだけ出す
+  const canVerify = !you && cardHasClaims(cardData)
+  $('cdVerify').hidden = !canVerify
+  if (canVerify) {
+    const btn = $('cdVerifyBtn'), msg = $('cdVerifyMsg')
+    const allOk = st?.state === 'done' && st.key && Object.values(st.svc).every(v => v === 'ok')
+    btn.hidden = !!allOk
+    btn.disabled = st?.state === 'checking'
+    btn.textContent = st?.state === 'checking' ? '確かめています…' : st?.state === 'done' ? 'もう一度確かめる' : '✅ を確かめる'
+    msg.textContent = !st ? '押すと、この人の SNS に本人確認の印があるかを、あなたの端末から確かめます（相手の SNS のサーバに問い合わせます）'
+      : st.state === 'checking' ? ''
+      : st.old ? '相手のアプリが古く、確かめられません（相手が再読み込みすると確かめられるようになります）'
+      : !st.key ? '⚠️ 名刺の鍵の持ち主であることを確かめられませんでした。なりすましの可能性があります'
+      : allOk ? '✅ 確かめました。この通話の間はこの結果を使います'
+      : '一部を確かめられませんでした（✅ の付いたものだけが本人確認済みです）'
+  }
 
   // フッター操作
   $('cdEditBtn').hidden = !you
@@ -2648,6 +2900,23 @@ const renderCardView = (uid, cardData) => {
       try { $('cardDlg').close() } catch {}
     }
   }
+}
+$('cdVerifyBtn').onclick = () => { const uid = call.cardViewing; if (uid && uid !== 'self') verifyCard(uid) }
+// お礼を押したとき：確かめた人（または配信者）ならそのまま開く。まだなら先に確かめ、結果を見せてから開いてもらう
+// （確かめる間に「ユーザー操作」が切れて新しいタブが開けないので、結果の窓の「開く」をもう一度押してもらう）
+$('cdTipLink').onclick = async e => {
+  const uid = call.cardViewing
+  if (!uid || uid === 'self') return
+  const c = call.cardCache.get(uid), def = c?.tip ? TIP_DEFS[c.tip.p] : null
+  if (!def) { e.preventDefault(); return }
+  if (tipTrust(uid).strong) return
+  e.preventDefault()
+  const url = def.url(c.tip.id)
+  if (cardHasClaims(c) && call.cardVer.get(uid)?.state !== 'done') await verifyCard(uid)
+  if (call.cardViewing !== uid) return
+  const tr = tipTrust(uid)
+  if (tr.strong) openLinkConfirm('✅ 確かめました', tr.text, url, 'ok')
+  else openLinkConfirm('⚠️ 本人確認されていない窓口です', (tr.text ? tr.text + '。' : '') + 'この窓口は本人の申告だけで、本人のものか確かめられていません。名前を名乗った別人の可能性もあります。', url, 'warn')
 }
 
 // カードを開く
@@ -2672,14 +2941,20 @@ const renderCardIfViewing = uid => {
 $('cdClose').onclick = () => { call.cardViewing = null; $('cardDlg').close() }
 $('cdEditBtn').onclick = () => { $('cardDlg').close(); openCardEdit() }
 
-// 未認証リンク注意モーダル
-const openCardWarn = (serviceName, id, url) => {
-  $('cdWarnTitle').textContent = '⚠️ 未検証の ' + serviceName + ' です'
-  $('cdWarnMsg').textContent = 'このリンク (' + shortenNpub(id) + ') は本人が所有しているか未検証です。なりすましにご注意ください。'
+// リンクを開く前の確認（未認証の SNS・確かめていないお礼など）
+const openLinkConfirm = (title, msg, url, kind) => {
+  $('cdWarnTitle').textContent = title
+  $('cdWarnMsg').textContent = msg
   $('cdWarnGo').href = url
+  $('cardWarnDlg').classList.toggle('ok', kind === 'ok')
   $('cdWarnGo').onclick = () => { try { $('cardWarnDlg').close() } catch {} }
   try { $('cardWarnDlg').showModal() } catch { window.open(url, '_blank', 'noopener,noreferrer') }
 }
+const openCardWarn = (serviceName, id, url, state) => openLinkConfirm(
+  '⚠️ 未検証の ' + serviceName + ' です',
+  'このリンク (' + shortenNpub(id) + ') は' + (state === 'claim' ? '、本人は認証済みと言っていますが、まだ確かめていません。「✅ を確かめる」で確かめられます。'
+    : state === 'ng' || state === 'err' ? '、確かめましたが本人のものと確認できませんでした。'
+    : '本人の申告だけで、本人のものか確かめられていません。') + 'なりすましにご注意ください。', url, 'warn')
 $('cdWarnNo').onclick = () => { $('cardWarnDlg').close() }
 
 // 名刺編集モーダルの制御
@@ -2690,59 +2965,26 @@ const syncBioCount = () => {
 }
 $('ceBio').oninput = syncBioCount
 
-// 確認用ワンタイムコードの管理（potalk-xxxx）
-const AUTH_CODE_KEY = 'pot-call-auth-code'
-const makeNewAuthCode = () => 'potalk-' + Math.random().toString(36).slice(2, 6)
-const getAuthCode = () => {
-  let c = lsGet(AUTH_CODE_KEY)
-  if (!c || !c.startsWith('potalk-')) {
-    c = makeNewAuthCode()
-    lsSet(AUTH_CODE_KEY, c)
-  }
-  return c
-}
-const refreshAuthCode = () => {
-  const c = makeNewAuthCode()
-  lsSet(AUTH_CODE_KEY, c)
-  return c
-}
-const makeXPostText = code =>
-  `ぽっと通話で本人確認を行っています 📇\n認証コード: ${code}\n\nブラウザで話せる音声通話「ぽっと通話」\nhttps://potalk.app #potalk`
+// X の投稿文（決定・10-11）。「残したくなる」形＝自分の名刺の紹介を兼ね、検証用であることを添える。
+// 消すと受け手の画面で ✅ が付かなくなる旨は、投稿には書かずアプリの確認画面で伝える（煽らない）
+const makeXPostText = line =>
+  `📇 ぽっと通話の名刺を作りました。\n通話で私の名前をタップすると ✅ 付きの名刺が出ます。\nこの投稿は ✅ の検証用です。\n鍵: ${line}\nhttps://potalk.app #potalk`
 
-// Nostr bech32 (npub) デコーダ
-const decodeNpub = npub => {
-  if (typeof npub !== 'string' || !npub.startsWith('npub1') || npub.length !== 63) return null
-  const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
-  const data = []
-  for (let i = 5; i < npub.length - 6; i++) {
-    const idx = CHARSET.indexOf(npub[i])
-    if (idx === -1) return null
-    data.push(idx)
-  }
-  let acc = 0, bits = 0
-  const res = []
-  for (const v of data) {
-    acc = (acc << 5) | v
-    bits += 5
-    while (bits >= 8) {
-      bits -= 8
-      res.push((acc >> bits) & 255)
-    }
-  }
-  return res.map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
+// 編集画面の ✅：いまの鍵・いまの入力と合う証拠があるときだけ。鍵が変わっていたら「再認証」
 const syncVerUi = () => {
   const c = loadCard()
-  const ver = c.verified || {}
   for (const k of ['x', 'github', 'nostr']) {
     const val = $('ceSns_' + k)?.value.trim()
-    const isVer = !!ver[k] && !!val && val === c.socials?.[k]
+    const pf = c.proofs?.[k]
+    const isVer = !!val && !!pf && pf.id === val && !!cardKeyRec && pf.fp === cardKeyRec.fp
+    const stale = !!val && !!pf && pf.id === val && !isVer   // 証拠はあるが鍵が変わった（ブラウザのデータが消えた等）
     const btn = $('ceBtnVer_' + k)
     const badge = $('ceVerBadge_' + k)
     if (btn) {
       btn.hidden = isVer
       btn.disabled = !val
+      btn.textContent = stale ? '再認証' : '認証'
+      btn.title = stale ? '鍵が変わったため、もう一度本人確認が必要です' : '本人確認を行う'
     }
     if (badge) badge.hidden = !isVer
   }
@@ -2851,7 +3093,9 @@ const openCardEdit = () => {
     const el = $('ceSns_' + k)
     if (el) el.value = soc[k] || ''
   }
+  $('ceNoImg').checked = lsGet(CARD_NOIMG_KEY) === '1'
   syncVerUi()
+  cardKeyLoad(false).then(syncVerUi).catch(() => {})   // 鍵の読み込みが後から終わったら ✅／再認証を描き直す
   try { $('cardEditDlg').showModal() } catch {}
 }
 $('btnOpenCardEdit').onclick = openCardEdit
@@ -2864,6 +3108,9 @@ for (const [k, def] of Object.entries(TIP_DEFS)) {
   if (!el) continue
   const onUpdate = () => {
     handleAutoTrim(el, def)
+    const h = def.hint?.(el.value) || ''
+    if (h) { $('ceWarn').textContent = '⚠️ ' + h; $('ceWarn').hidden = false }
+    else if ($('ceWarn').textContent.includes('短縮 URL')) { $('ceWarn').hidden = true; $('ceWarn').textContent = '' }
     if (el.value.trim()) {
       const radio = $('ceTipR_' + k)
       if (radio && !radio.checked) radio.checked = true
@@ -2890,8 +3137,8 @@ for (const [k, def] of Object.entries(SNS_DEFS)) {
   if (badge) {
     badge.onclick = () => {
       const c = loadCard()
-      if (c.verified && c.verified[k]) {
-        delete c.verified[k]
+      if (c.proofs && c.proofs[k]) {
+        delete c.proofs[k]
         saveCard(c)
         syncVerUi()
       }
@@ -2899,11 +3146,14 @@ for (const [k, def] of Object.entries(SNS_DEFS)) {
   }
 }
 
-// ── 本人確認チャレンジモーダル ──
+// ── 本人確認（持ち主側・v0.16.1）──
+// 名刺の鍵の指紋 `potalk1-…` を SNS 側に載せ、自分の端末で一度確かめて「証拠」として保存する。
+// 受け手は同じ証拠を自分で確かめ直す（ここでの成功を信じるわけではない）
 let curAuthService = null
 let curAuthId = ''
+let curAuthLine = ''
 
-const openCardAuth = service => {
+const openCardAuth = async service => {
   const inputEl = $('ceSns_' + service)
   const id = inputEl ? inputEl.value.trim() : ''
   const def = SNS_DEFS[service]
@@ -2911,45 +3161,48 @@ const openCardAuth = service => {
     inputEl?.focus()
     return
   }
+  let key = null
+  try { key = await cardKeyLoad(true) } catch {}
+  if (!key) { alert('このブラウザでは名刺の鍵を保存できません（プライベートモードなど）。通常のウィンドウでお試しください'); return }
   curAuthService = service
   curAuthId = id
+  curAuthLine = fpLine(key.fp)
 
   $('caMsg').hidden = true
   $('caMsg').textContent = ''
   $('caVerifyBtn').disabled = false
   $('caVerifyBtn').textContent = '確認する'
-
-  const code = getAuthCode()
-  $('caCode').textContent = code
+  $('caCode').textContent = curAuthLine
+  const keep = '※ ブラウザのデータを消すと鍵が変わり、もう一度認証が必要になります（鍵は取り出せない形でこの端末にだけあります）。'
 
   if (service === 'github') {
     $('caTitle').textContent = '🐙 GitHub 本人確認'
     $('caAccount').textContent = '対象アカウント: @' + id
-    $('caDesc').textContent = 'あなたの GitHub プロフィールの「自己紹介 (bio)」に、一時的に下記の確認コードを記載して「確認する」を押してください。'
+    $('caDesc').textContent = 'GitHub のプロフィールの「自己紹介 (bio)」に、下の鍵の行を書いて保存し、「確認する」を押してください。'
     $('caCodeSec').hidden = false
     $('caXPostSec').hidden = true
     $('caInputSec').hidden = true
-    $('caNote').textContent = '※ bio にコードを保存して「確認する」を押してください。認証完了後は bio からコードを削除して構いません。'
+    $('caNote').textContent = '※ 相手はあなたの名刺を見るたびに bio を確かめます。bio から消すと、相手の画面で ✅ が付かなくなります。' + keep
   } else if (service === 'x') {
     $('caTitle').textContent = '𝕏 (Twitter) 本人確認'
     $('caAccount').textContent = '対象アカウント: @' + id
-    $('caDesc').textContent = '下記の「𝕏 でポストする」から確認コードを含むポストを投稿し、そのポストのリンクを下に入力して「確認する」を押してください。'
+    $('caDesc').textContent = '「𝕏 でポストする」から下の文面を投稿し、そのポストのリンクを貼って「確認する」を押してください。'
     $('caCodeSec').hidden = false
     $('caXPostSec').hidden = false
-    const postText = makeXPostText(code)
+    const postText = makeXPostText(curAuthLine)
     $('caPostPreview').textContent = postText
     $('caTweetBtn').href = 'https://x.com/intent/post?text=' + encodeURIComponent(postText)
     $('caInputSec').hidden = false
     $('caInputUrl').value = ''
-    $('caNote').textContent = '※ 投稿後、そのポストのリンク（共有URL）を下に貼って「確認する」を押してください。認証完了後はポストを残しても削除してもどちらでも構いません。'
+    $('caNote').textContent = '※ 相手はあなたの名刺を見るたびにこの投稿を確かめます。投稿を消すと、相手の画面で ✅ が付かなくなります（埋もれても大丈夫です）。' + keep
   } else if (service === 'nostr') {
     $('caTitle').textContent = '🟣 Nostr 本人確認'
     $('caAccount').textContent = '対象: ' + shortenNpub(id)
-    $('caDesc').textContent = 'ブラウザの NIP-07 拡張機能（nos2x, Alby 等）を使用して、この npub の秘密鍵を所有していることを確認します。'
-    $('caCodeSec').hidden = true
+    $('caDesc').textContent = 'ブラウザの NIP-07 拡張機能（nos2x・Alby など）で、この npub の鍵で「名刺の鍵」に署名します。署名は名刺に入れて相手に渡すだけで、リレーには投稿しません。'
+    $('caCodeSec').hidden = false
     $('caXPostSec').hidden = true
     $('caInputSec').hidden = true
-    $('caNote').textContent = '※ 拡張機能から公開鍵を取得して一致を検証します。'
+    $('caNote').textContent = '※ 拡張機能が署名の許可を求めてきます。' + keep
   } else {
     return
   }
@@ -2964,41 +3217,30 @@ $('ceBtnVer_nostr').onclick = () => openCardAuth('nostr')
 $('caClose').onclick = () => { $('cardAuthDlg').close() }
 $('caCancelBtn').onclick = () => { $('cardAuthDlg').close() }
 
-$('caRefreshCode').onclick = () => {
-  const newCode = refreshAuthCode()
-  $('caCode').textContent = newCode
-  if (curAuthService === 'x') {
-    const postText = makeXPostText(newCode)
-    $('caPostPreview').textContent = postText
-    $('caTweetBtn').href = 'https://x.com/intent/post?text=' + encodeURIComponent(postText)
-  }
+const flashCopy = (btn, text, label) => {
+  if (!navigator.clipboard) return
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✅ コピー済'
+    setTimeout(() => { btn.textContent = label }, 1500)
+  }).catch(() => {})
 }
+$('caCopyCode').onclick = () => flashCopy($('caCopyCode'), curAuthLine, '📋 鍵の行をコピー')
+$('caCopyPost').onclick = () => flashCopy($('caCopyPost'), makeXPostText(curAuthLine), '📋 投稿文をコピー')
 
-$('caCopyCode').onclick = () => {
-  const code = $('caCode').textContent
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(code).then(() => {
-      $('caCopyCode').textContent = '✅ コピー済'
-      setTimeout(() => { $('caCopyCode').textContent = '📋 コードをコピー' }, 1500)
-    }).catch(() => {})
-  }
+const AUTH_WHY = {
+  notfound: 'アカウントが見つかりません',
+  limit: '問い合わせの回数制限中です。少し待ってからお試しください',
+  http: 'サービスに問い合わせられませんでした。公開アカウントか確認してください',
+  author: '投稿者（署名した人）が入力したアカウントと違います',
+  nocode: '鍵の行が見つかりませんでした。書き写しや保存を確認してください',
+  shape: '署名の形が正しくありません',
+  sig: '署名を確かめられませんでした',
+  none: '署名がありません',
 }
-
-$('caCopyPost').onclick = () => {
-  const code = $('caCode').textContent
-  const text = makeXPostText(code)
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(() => {
-      $('caCopyPost').textContent = '✅ コピー済'
-      setTimeout(() => { $('caCopyPost').textContent = '📋 投稿文をコピー' }, 1500)
-    }).catch(() => {})
-  }
-}
-
 $('caVerifyBtn').onclick = async () => {
   const service = curAuthService
   const id = curAuthId
-  const code = getAuthCode()
+  const line = curAuthLine
   const btn = $('caVerifyBtn')
   const msg = $('caMsg')
 
@@ -3007,65 +3249,51 @@ $('caVerifyBtn').onclick = async () => {
   msg.hidden = true
 
   try {
+    const key = await cardKeyLoad(true)
+    if (!key || fpLine(key.fp) !== line) throw new Error('名刺の鍵が変わりました。いったん閉じて、もう一度「認証」を押してください')
+    let proof = { id, fp: key.fp }
     if (service === 'github') {
-      const res = await fetch('https://api.github.com/users/' + encodeURIComponent(id), {
-        headers: { 'Accept': 'application/vnd.github.v3+json' }
-      })
-      if (!res.ok) {
-        if (res.status === 404) throw new Error('GitHub ユーザーが見つかりません (@' + id + ')')
-        if (res.status === 403) throw new Error('GitHub API の利用制限中です。少し待ってからお試しください')
-        throw new Error('GitHub API エラー (' + res.status + ')')
-      }
-      const data = await res.json()
-      const bio = data.bio || ''
-      if (!bio.includes(code)) {
-        throw new Error('自己紹介 (bio) に確認コード (' + code + ') が見つかりませんでした。bio に貼り付けて保存したか確認してください。')
-      }
+      const r = await checkGithubProof(id, line)
+      if (!r.ok) throw new Error(AUTH_WHY[r.why] || '確認できませんでした')
     } else if (service === 'x') {
       const url = $('caInputUrl').value.trim()
       if (!url) throw new Error('ポストの URL を入力してください')
-      const m = url.match(/(?:x|twitter)\.com\/([a-zA-Z0-9_]+)\/status\/(\d+)/i)
+      const m = url.match(/(?:x|twitter)\.com\/(?:[a-zA-Z0-9_]+|i(?:\/web)?)\/status\/(\d{1,25})/i)
       if (!m) throw new Error('正しいポストの URL を入力してください (例: https://x.com/' + id + '/status/...)')
-      if (m[1].toLowerCase() !== id.toLowerCase()) {
-        throw new Error('指定されたポストの投稿者 (@' + m[1] + ') が入力された ID (@' + id + ') と異なります')
-      }
-      const res = await fetch('https://publish.x.com/oembed?url=' + encodeURIComponent(url))
-      if (!res.ok) throw new Error('ポストを取得できませんでした。公開アカウントの投稿か確認してください')
-      const data = await res.json()
-      const html = data.html || ''
-      if (!html.includes(code)) {
-        throw new Error('投稿内容に確認コード (' + code + ') が含まれていません。投稿を確認してください。')
-      }
+      const r = await checkXProof(id, m[1], line)
+      if (!r.ok) throw new Error(AUTH_WHY[r.why] || '確認できませんでした')
+      proof.sid = m[1]
     } else if (service === 'nostr') {
-      if (!window.nostr || typeof window.nostr.getPublicKey !== 'function') {
+      if (!window.nostr || typeof window.nostr.signEvent !== 'function') {
         throw new Error('NIP-07 拡張機能 (nos2x や Alby など) がブラウザに見つかりません')
       }
-      const hex = await window.nostr.getPublicKey()
-      const targetHex = decodeNpub(id)
-      if (!targetHex) throw new Error('入力された npub の形式が正しくありません')
-      if (hex.toLowerCase() !== targetHex.toLowerCase()) {
-        throw new Error('拡張機能のアカウントが入力された npub と一致しません')
-      }
+      const ev = await window.nostr.signEvent({
+        kind: CARD_NOSTR_KIND, created_at: Math.floor(Date.now() / 1000),
+        tags: [['d', 'potalk-card']], content: line,
+      })
+      const clean = sanitizeNostrEv(ev)
+      const r = await checkNostrProof(id, clean, line)
+      if (!r.ok) throw new Error(r.why === 'author' ? '拡張機能のアカウントが入力された npub と一致しません' : (AUTH_WHY[r.why] || '確認できませんでした'))
+      proof.ev = clean
     }
 
-    // 認証成功
     msg.className = 'ca-msg ok'
-    msg.textContent = '🎉 本人確認が完了しました！✅ 認証バッジを付与しました。'
+    msg.textContent = '🎉 本人確認ができました。相手の画面では、相手が「✅ を確かめる」を押すと ✅ が付きます。'
     msg.hidden = false
     btn.textContent = '✅ 認証完了'
 
     const c = loadCard()
-    c.verified = c.verified || {}
-    c.verified[service] = true
+    c.proofs = c.proofs || {}
+    c.proofs[service] = proof
     c.socials = c.socials || {}
     c.socials[service] = id
+    delete c.verified   // v0.16.0 の自己申告の印は使わない
     saveCard(c)
-    refreshAuthCode()
     syncVerUi()
 
     setTimeout(() => {
       try { $('cardAuthDlg').close() } catch {}
-    }, 1200)
+    }, 1600)
 
   } catch (err) {
     msg.className = 'ca-msg bad'
@@ -3097,7 +3325,7 @@ $('ceSave').onclick = () => {
         el.value = parsed
         el.classList.remove('is-bad')
       } else {
-        savedTips[k] = raw
+        savedTips[k] = ''   // 形の合わない生の入力（URL 等）は保存しない
         el.classList.add('is-bad')
       }
     } else {
@@ -3112,7 +3340,8 @@ $('ceSave').onclick = () => {
     const id = savedTips[selTip]
     const def = TIP_DEFS[selTip]
     if (!id || !def || !def.re.test(id)) {
-      $('ceWarn').textContent = '⚠️ 選択したお礼窓口（' + (def?.name || selTip) + '）のURLまたはIDが正しくありません'
+      const raw = $('ceTip_' + selTip)?.value.trim() || ''
+      $('ceWarn').textContent = '⚠️ ' + (def?.hint?.(raw) || '選択したお礼窓口（' + (def?.name || selTip) + '）のURLまたはIDが正しくありません')
       $('ceWarn').hidden = false
       $('ceTip_' + selTip)?.focus()
       return
@@ -3142,15 +3371,14 @@ $('ceSave').onclick = () => {
     socials[k] = parsed
   }
 
+  // 証拠は、同じアカウントのままのものだけ引き継ぐ（ID を変えたら認証し直し）
   const prev = loadCard()
-  const verified = {}
-  if (prev.verified) {
-    for (const [k, v] of Object.entries(prev.verified)) {
-      if (v && socials[k] && socials[k] === prev.socials?.[k]) verified[k] = true
-    }
+  const proofs = {}
+  for (const [k, pf] of Object.entries(prev.proofs || {})) {
+    if (pf && socials[k] && pf.id === socials[k]) proofs[k] = pf
   }
-
-  saveCard({ bio, tip, socials, verified, savedTips, avatar: curAvatar || null })
+  lsSet(CARD_NOIMG_KEY, $('ceNoImg').checked ? '1' : '0')
+  saveCard({ bio, tip, socials, proofs, savedTips, avatar: curAvatar || null })
   $('cardEditDlg').close()
 }
 
@@ -3308,13 +3536,19 @@ const emojiEls = new Map()  // uid('self'|peerId) → 現在の絵文字要素�
 // 配信部屋の印と、登壇の切替ボタン（bc）。bc は配信部屋のときだけ渡す。
 //   bc.mark  … 📣＝配信者 / 🎙＝話してよい人 / ''＝聞き役
 //   bc.grant … オーナーの画面にだけ付く切替（{on, title, onClick}）
+// 押せる span（名刺を開く絵文字・名前）：キーボードでもフォーカスでき、Enter／スペースで押せるように（v0.16.1）
+const asButton = (el, fn, label) => {
+  el.tabIndex = 0; el.setAttribute('role', 'button'); if (label) el.setAttribute('aria-label', label)
+  el.onclick = fn
+  el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(e) } }
+}
 const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc, onCard) => {
   const row = document.createElement('div'); row.className = 'member' + (isMuted ? ' muted' : '')
   const av = document.createElement('span'); av.className = 'm-emoji'; av.textContent = emoji || '🙂'
   if (onCard) {
     av.classList.add('m-tap')
     av.title = you ? 'あなたの名刺を見る / 編集' : (name || 'この人') + ' の名刺を見る'
-    av.onclick = onCard
+    asButton(av, onCard, av.title)
   }
   // ★行の並びは **[アバター][状態][名前][操作]**。**左は見るだけ・右は押すもの**、と役割で分ける
   //   （2026-08-18：見る印と押す印が右端で交互に並んでいて、どれが押せるのか分からなかった）。
@@ -3353,7 +3587,7 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc, onCard) 
   const id = document.createElement('span'); id.className = 'm-id'
   const nm = document.createElement('span'); nm.className = 'm-name'
   nm.textContent = name || 'ゲスト'; nm.title = name || 'ゲスト'   // 詰められた分は title で読める
-  if (onCard) { nm.classList.add('m-tap'); nm.onclick = onCard }
+  if (onCard) { nm.classList.add('m-tap'); asButton(nm, onCard) }
   id.append(nm)
   if (stage) { const sg = document.createElement('span'); sg.className = 'm-stage'; sg.textContent = stage; id.append(sg) }
   if (you) { const t = document.createElement('span'); t.className = 'you'; t.textContent = '（あなた）'; id.append(t) }
@@ -5688,8 +5922,7 @@ const logChat = (uid, text) => {
     em.title = 'あなたの名刺を見る / 編集'
     who.title = 'あなたの名刺を見る / 編集'
     const openMy = e => { e.stopPropagation(); openCard('self') }
-    em.onclick = openMy
-    who.onclick = openMy
+    asButton(em, openMy, 'あなたの名刺を見る'); asButton(who, openMy)
     row.append(em, who, tx)
   } else {
     // 無視の入口（v0.15.17）：行をタップ → 名前の直後にハート → 押すと ignorePeer（初回は説明ダイアログ）。
@@ -5710,6 +5943,9 @@ const logChat = (uid, text) => {
     }
     em.onclick = onWhoTap
     who.onclick = onWhoTap
+    // キーボード：名前に Enter で、行の選択を飛ばしてそのまま名刺を開く
+    who.tabIndex = 0
+    who.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openCard(uid) } }
 
     row.onclick = () => pickChatRow(row)
     row.append(em, who, ig, tx)
@@ -6704,9 +6940,28 @@ const wireRoom = () => {
     } else if (data.k === 'res') {
       const sc = sanitizeCard(data)
       if (sc) {
+        const prev = call.cardCache.get(peerId)
+        // 名刺の鍵か証拠が変わったら、確かめた結果は捨てる（前の結果を新しい中身に当てない）
+        if (!prev || prev.ck !== sc.ck || JSON.stringify(prev.pr || {}) !== JSON.stringify(sc.pr || {}) || JSON.stringify(prev.socials || {}) !== JSON.stringify(sc.socials || {})) call.cardVer.delete(peerId)
+        if (prev && prev.avatar === sc.avatar) sc.avatarSafe = prev.avatarSafe
         call.cardCache.set(peerId, sc)
         renderCardIfViewing(peerId)
+        if (sc.avatar && !sc.avatarSafe) redrawAvatar(sc.avatar).then(safe => {
+          if (safe && call.cardCache.get(peerId) === sc) { sc.avatarSafe = safe; renderCardIfViewing(peerId) }
+        })
       }
+    } else if (data.k === 'q') {   // 名刺の鍵への問い返し：署名して返す（v0.16.1）
+      const n = typeof data.n === 'string' && data.n.length <= 64 ? data.n : ''
+      if (!n || !cardKeyRec || !call.joinedId) return
+      if (tooSoon(call.cardAskAt, peerId, 500)) return
+      const room = call.joinedId
+      crypto.subtle.sign(SIGN_ALG, cardKeyRec.priv, enc(cardAuthMsg(room, peerId, myPeerId, n)))
+        .then(sig => { if (room === call.joinedId) sendTo(call.cardAction, { k: 'a', n, sig: b64u(sig) }, peerId) })
+        .catch(() => {})
+    } else if (data.k === 'a') {   // 問い返しの答え：自分が送った未処理の乱数への答えだけ
+      const ask = call.cardAsk.get(peerId)
+      const sig = typeof data.sig === 'string' && B64U_RE.test(data.sig) ? data.sig : ''
+      if (ask && sig && data.n === ask.n) ask.answer(sig)
     }
   }
 
@@ -6730,7 +6985,7 @@ const wireRoom = () => {
     call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id); sendPeers()
     call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id); call.requests.delete(id)
     call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
-    call.cardCache.delete(id); call.cardReqSeen.delete(id)
+    call.cardCache.delete(id); call.cardReqSeen.delete(id); call.cardVer.delete(id); call.cardAsk.delete(id); call.cardAskAt.delete(id)
     if (call.cardViewing === id) { call.cardViewing = null; try { $('cardDlg').close() } catch {} }
     call.ttsSent.delete(id); call.ttsSentStream.delete(id); call.ttsResentAt.delete(id)   // 読み上げを配った記録（入り直せば別 ID＝改めて {ok} を待つ）
     if (id === call.ownerPeer && call.ttsAnn) { call.ttsAnn = null; call.ttsTrackIds.clear(); dropAudios('tts'); removeAnalyser('tts') }   // 配信者が抜けた＝仮想行も畳む
