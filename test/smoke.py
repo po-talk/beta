@@ -2150,10 +2150,8 @@ def T72(r, room):
     bio_ok = a.wait_for("document.getElementById('cdBio').textContent === 'テスト自己紹介'", timeout=SHORT)
     tip_ok = a.eval("document.getElementById('cdTipSub').textContent.includes('sampleuser')")
     avatar_ok = a.wait_for("!document.getElementById('cdAvatar').hidden && document.getElementById('cdEmoji').hidden && !document.getElementById('cdSubEmoji').hidden", timeout=SHORT)
-    x_badge = a.eval("""(() => {
-        const ok = document.querySelector('#cdSocials .cd-ok');
-        return ok && ok.textContent.includes('✅');
-    })()""")
+    # v0.16.1：「認証済み」の自己申告（localStorage の verified）は送らない・✅ にしない
+    x_badge = a.eval("""(() => !document.querySelector('#cdSocials .cd-ok'))()""")
     un_badge = a.eval("""(() => {
         const un = document.querySelector('#cdSocials .cd-un');
         return un && un.textContent.includes('未認証');
@@ -2214,9 +2212,130 @@ def T72(r, room):
     peer_ignored = a.wait_for("document.querySelectorAll('#members .member.ignored').length === 1", timeout=SHORT)
 
     ok = bool(joined and opened and dlg_open and bio_ok and tip_ok and avatar_ok and x_badge and un_badge and nostr_shortened and btn_has_heart and close_btn and closed_by_x and chat_arrived and row_picked and name_tapped and dlg_open_from_chat and ignored and dlg_closed and peer_ignored)
-    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/認証/Tip/画像＋添え絵文字/Nostr短縮/自衛ハートSVG)・✕で閉じる・チャット名前タップで開く・自衛ボタンで無視連動', ok, 'pass',
-            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / アバター画像=%s / 認証バッジ=%s / 未認証バッジ=%s / Nostr短縮=%s / 自衛ハート=%s / ✕閉=%s / チャット着=%s / 行選択=%s / 名前タップ=%s / チャットから開=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
+    r.check('T72', '名刺交換：アバタータップで展開・相手カード受信(bio/SNS/自己申告は✅にしない/Tip/画像＋添え絵文字/Nostr短縮/自衛ハートSVG)・✕で閉じる・チャット名前タップで開く・自衛ボタンで無視連動', ok, 'pass',
+            '2人参加=%s / 開いた=%s / モーダル開=%s / bio=%s / tip=%s / アバター画像=%s / 自己申告は✅なし=%s / 未認証バッジ=%s / Nostr短縮=%s / 自衛ハート=%s / ✕閉=%s / チャット着=%s / 行選択=%s / 名前タップ=%s / チャットから開=%s / 自衛押下=%s / 閉じた=%s / 無視反映=%s'
             % (joined, opened, dlg_open, bio_ok, tip_ok, avatar_ok, x_badge, un_badge, nostr_shortened, btn_has_heart, closed_by_x, chat_arrived, row_picked, name_tapped, dlg_open_from_chat, ignored, dlg_closed, peer_ignored))
+    click_leave(a); click_leave(b)
+
+
+def T74(r, room):
+    """名刺の本人確認を受け手が確かめる（v0.16.1）
+
+    ①持ち主：Nostr の拡張機能（モック）で名刺の鍵に署名して認証。お礼は Zap（npub）
+    ②受け手：開いた時点は「要確認」・お礼は控えめ（weak）→「✅ を確かめる」で問い返し（鍵の持ち主か）と
+      証拠（Nostr の署名）を確かめて ✅・お礼はふつう＋「Zap の行き先も確認」
+    ③偽の証拠：別の指紋の行に署名したイベントと、他人（@jack）の X 投稿を証拠として送る → どちらも ✅ にならず、
+      お礼は控えめのまま、押すと「本人確認されていない窓口」の確認が挟まる
+    ※smoke のタブは同じ Chrome プロファイル＝localStorage と IndexedDB（名刺の鍵）を共有する。持ち主と受け手が
+      同じ鍵になるが、問い返しと証拠の照合の経路は本物と同じ
+    """
+    name = room + 'VER'
+    a = r.open_tab()
+    a.eval("localStorage.removeItem('pot-call-card'); localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    npub = a.eval("""(async () => {
+        const nt = await import('https://esm.sh/nostr-tools@2.10.4')
+        const sk = nt.generateSecretKey(), pk = nt.getPublicKey(sk)
+        window.__nt = nt; window.__sk = sk
+        window.nostr = { getPublicKey: async () => pk, signEvent: async ev => nt.finalizeEvent(ev, sk) }
+        return nt.nip19.npubEncode(pk)
+    })()""")
+    a.eval("document.getElementById('btnOpenCardEdit').click()")
+    a.wait_for("document.getElementById('cardEditDlg').open", timeout=SHORT)
+    a.eval("""(() => {
+        const n = document.getElementById('ceSns_nostr'); n.value = %s; n.dispatchEvent(new Event('input'))
+        const z = document.getElementById('ceTip_zap'); z.value = %s; z.dispatchEvent(new Event('input'))
+        document.getElementById('ceSave').click()
+    })()""" % (js_str(npub), js_str(npub)))
+    a.wait_for("!document.getElementById('cardEditDlg').open", timeout=SHORT)
+    a.eval("document.getElementById('btnOpenCardEdit').click()")
+    a.wait_for("document.getElementById('cardEditDlg').open", timeout=SHORT)
+    a.eval("document.getElementById('ceBtnVer_nostr').click()")
+    a.wait_for("document.getElementById('cardAuthDlg').open", timeout=SHORT)
+    a.eval("document.getElementById('caVerifyBtn').click()")
+    owner_ok = a.wait_for("document.getElementById('caMsg').classList.contains('ok')", timeout=30)
+    owner_msg = a.eval("document.getElementById('caMsg').textContent")
+    a.eval("document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+
+    b = r.open_tab()
+    b.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(a, name)
+    r.join(b, name)
+    joined = b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    OPEN = """(() => { const row = [...document.querySelectorAll('#members .member')].find(el => !el.querySelector('.you'));
+        const t = row && row.querySelector('.m-tap'); if (!t) return false; t.click(); return true })()"""
+    CHIP = "[...document.querySelectorAll('#cdSocials .cd-sns')].map(e => e.textContent).join('|')"
+    b.eval(OPEN)
+    t_req = time.time()
+    claim = b.wait_for("%s.includes('要確認')" % CHIP, timeout=SHORT)
+    weak = b.eval("document.getElementById('cdTip').classList.contains('weak')")
+    b.eval("document.getElementById('cdVerifyBtn').click()")
+    verified = b.wait_for("[...document.querySelectorAll('#cdSocials .cd-ok')].some(e => e.textContent.includes('✅'))", timeout=30)
+    strong = b.wait_for("!document.getElementById('cdTip').classList.contains('weak') && document.getElementById('cdTipTrust').textContent.includes('Zap の行き先')", timeout=SHORT)
+    chips1 = b.eval(CHIP)
+
+    # ③偽の証拠：別の指紋の行に署名したイベント・他人（@jack）の投稿。鍵は同じ（問い返しは通る）が証拠が合わない
+    a.eval("""(async () => {
+        const c = JSON.parse(localStorage.getItem('pot-call-card') || '{}')
+        const fp = c.proofs.nostr.fp
+        c.proofs.nostr.ev = window.__nt.finalizeEvent({ kind: 30078, created_at: Math.floor(Date.now() / 1000), tags: [['d', 'potalk-card']], content: 'potalk1-AAAAAAAAAAAAAAAAAAAAAA' }, window.__sk)
+        c.socials.x = 'jack'; c.proofs.x = { id: 'jack', sid: '20', fp }
+        localStorage.setItem('pot-call-card', JSON.stringify(c))
+    })()""")
+    b.eval("document.getElementById('cdClose').click()")
+    time.sleep(max(0, 11 - (time.time() - t_req)))   # 同じ相手への名刺の要求は 10 秒に 1 回まで
+    b.eval(OPEN)
+    reclaim = b.wait_for("%s.includes('要確認') && %s.includes('jack')" % (CHIP, CHIP), timeout=SHORT)
+    b.eval("document.getElementById('cdVerifyBtn').click()")
+    done2 = b.wait_for("!document.getElementById('cdVerifyBtn').disabled && document.getElementById('cdVerifyMsg').textContent.length > 0 && !%s.includes('確認中')" % CHIP, timeout=40)
+    chips2 = b.eval(CHIP)
+    fake_rejected = '✅' not in chips2 and chips2.count('確認できません') == 2
+    weak2 = b.eval("document.getElementById('cdTip').classList.contains('weak')")
+    b.eval("document.getElementById('cdTipLink').click()")
+    warned = b.wait_for("document.getElementById('cardWarnDlg').open && document.getElementById('cdWarnTitle').textContent.includes('本人確認されていない')", timeout=SHORT)
+    b.eval("document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    ok = bool(owner_ok and joined and claim and weak and verified and strong and reclaim and done2 and fake_rejected and weak2 and warned)
+    r.check('T74', '名刺の本人確認：受け手が問い返し＋証拠で ✅（Zap の行き先も）・偽の証拠（別の指紋・他人の X 投稿）は ✅ にならず、お礼は控えめ＋確認が挟まる', ok, 'pass',
+            '持ち主の認証=%s(%s) / 参加=%s / 要確認=%s / お礼控えめ=%s / 確かめて✅=%s / お礼ふつう=%s [%s] / 偽を受信=%s / 確かめ終わり=%s / 偽は✅なし=%s [%s] / お礼控えめ=%s / 確認が挟まる=%s'
+            % (bool(owner_ok), owner_msg[:30], bool(joined), bool(claim), weak, bool(verified), bool(strong), chips1, bool(reclaim), bool(done2), fake_rejected, chips2, weak2, bool(warned)))
+    a.eval("localStorage.removeItem('pot-call-card')")
+    click_leave(a); click_leave(b)
+
+
+def T75(r, room):
+    """ひとことの行をタップすると、名前の隣に無視のハートが見える（14px）。もう一度名前を押すと名刺が開く
+
+    v0.16.0 でハートの大きさを決める CSS が消えて 18px になり、v0.16.1 で戻した。表示そのものの回帰も見る。
+    """
+    name = room + 'HRT'
+    a, b = r.open_tab(), r.open_tab()
+    for t in (a, b):   # ヘルプの窓が開いていると、タップがそちらに当たる
+        t.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(a, name); r.join(b, name)
+    joined = a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    b.eval("(() => { document.getElementById('tabChat')?.click(); const t = document.getElementById('chatText'); t.value = 'ハートの確認'; document.getElementById('chatSend').click() })()")
+    a.eval("document.getElementById('tabChat')?.click()")
+    arrived = a.wait_for("!!document.querySelector('#chatLog .cl-row.can')", timeout=SHORT)
+    # スマホの幅で、指のタップ（タッチイベント）として行の本文を押す（element.click() では拾えない違いを見るため）
+    a.call('Page.bringToFront')   # 裏のタブには入力イベントが届かない（描画待ちで止まる）
+    a.call('Emulation.setDeviceMetricsOverride', width=390, height=844, deviceScaleFactor=2, mobile=True)
+    a.call('Emulation.setTouchEmulationEnabled', enabled=True, maxTouchPoints=5)
+    a.eval("document.querySelector('#chatLog .cl-row.can').scrollIntoView({block: 'center'})")
+    time.sleep(0.5)
+    pt = a.eval("(() => { const r = document.querySelector('#chatLog .cl-row.can .cl-text').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] })()")
+    for t in ('touchStart', 'touchEnd'):
+        a.call('Input.dispatchTouchEvent', type=t, touchPoints=([{'x': pt[0], 'y': pt[1]}] if t == 'touchStart' else []))
+    time.sleep(0.5)
+    size = a.eval("""(() => { const b = document.querySelector('#chatLog .cl-row.pick .cl-ig'); if (!b) return 'no-button';
+        const st = getComputedStyle(b), sv = b.querySelector('svg'); if (!sv) return 'no-svg';
+        const r = sv.getBoundingClientRect(); return st.display + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) })()""")
+    shown = isinstance(size, str) and not size.startswith('none') and size.endswith('14x14')
+    picked = a.eval("!!document.querySelector('#chatLog .cl-row.pick')")
+    a.eval("document.querySelector('#chatLog .cl-row.can .cl-who').click()")
+    card = a.wait_for("document.getElementById('cardDlg') && document.getElementById('cardDlg').open", timeout=SHORT) if picked else False
+    a.eval("document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    ok = bool(joined and arrived and picked and shown and card)
+    r.check('T75', 'ひとことの行を選ぶと無視のハートが見える（14px）・名前をもう一度押すと名刺', ok, 'pass',
+            '参加=%s / 着信=%s / タップで選択=%s / ハート=%s / 名刺=%s' % (bool(joined), bool(arrived), picked, size, bool(card)))
     click_leave(a); click_leave(b)
 
 
@@ -2249,13 +2368,16 @@ def T73(r):
     auth_open = a.wait_for("document.getElementById('cardAuthDlg').open", timeout=SHORT)
 
     # ワンタイムコードが表示されているか
+    # v0.16.1：確認コードは名刺の鍵の指紋（potalk1-＋22 文字）。鍵は IndexedDB の取り出せない鍵
+    a.wait_for("/^potalk1-[A-Za-z0-9_-]{22}$/.test(document.getElementById('caCode').textContent)", timeout=SHORT)
     code_text = a.eval("document.getElementById('caCode').textContent")
-    has_code = bool(code_text and code_text.startswith('potalk-'))
-
-    # コード再生成ボタンで別のコードに変わるか
-    a.eval("document.getElementById('caRefreshCode').click()")
-    code_text2 = a.eval("document.getElementById('caCode').textContent")
-    refreshed_code = bool(code_text2 and code_text2.startswith('potalk-') and code_text2 != code_text)
+    has_code = bool(code_text and code_text.startswith('potalk1-'))
+    refreshed_code = a.eval("""(async () => {   // 鍵は取り出せない（extractable=false）
+        const db = await new Promise((ok, ng) => { const o = indexedDB.open('pot-call-keys', 1); o.onsuccess = () => ok(o.result); o.onerror = ng })
+        const v = await new Promise(ok => { const q = db.transaction('keys').objectStore('keys').get('card'); q.onsuccess = () => ok(q.result) })
+        db.close()
+        return !!v && v.priv && v.priv.extractable === false
+    })()""")
 
     # キャンセルで閉じる
     a.eval("document.getElementById('caCancelBtn').click()")
@@ -2278,12 +2400,12 @@ def T73(r):
     a.eval("""(() => {
         const c = JSON.parse(localStorage.getItem('pot-call-card') || '{}');
         c.socials = { github: 'octocat' };
-        c.verified = { github: true };
+        c.proofs = { github: { id: 'octocat', fp: %s } };
         localStorage.setItem('pot-call-card', JSON.stringify(c));
         // 再度編集モーダルを開き直して同期
         document.getElementById('ceCancel').click();
         document.getElementById('btnOpenCardEdit').click();
-    })()""")
+    })()""" % js_str(code_text[len('potalk1-'):]))
 
     badge_shown = a.wait_for("""(() => {
         const b = document.getElementById('ceVerBadge_github');
@@ -2316,6 +2438,10 @@ def T73(r):
     trimmed_ofuse = a.wait_for("document.getElementById('ceTip_ofuse').value === 'aa2c9a98'", timeout=SHORT)
     trimmed_amz = a.wait_for("document.getElementById('ceTip_amazon').value === '3869YUP07M5ZS'", timeout=SHORT)
     trimmed_x = a.wait_for("document.getElementById('ceSns_x').value === 'potalk_app'", timeout=SHORT)
+    # ほしい物リストの短縮 URL は展開できない＝案内を出す（ID だけを記憶する）
+    a.eval("""(() => { const i = document.getElementById('ceTip_amazon'); i.value = 'https://amzn.asia/d/abc123'; i.dispatchEvent(new Event('input')) })()""")
+    short_hint = a.wait_for("!document.getElementById('ceWarn').hidden && document.getElementById('ceWarn').textContent.includes('短縮 URL')", timeout=SHORT)
+    a.eval("""(() => { const i = document.getElementById('ceTip_amazon'); i.value = '3869YUP07M5ZS'; i.dispatchEvent(new Event('input')) })()""")
 
     # 不正なURL入力時に is-bad が付与されるか検証
     a.eval("""(() => {
@@ -2344,11 +2470,11 @@ def T73(r):
     a.eval("document.getElementById('ceCancel').click()")
 
     ok = bool(dlg_open and btn_shown and auth_open and has_code and refreshed_code and has_tweet_intent and auth_closed and badge_shown and unverified and
-              trimmed_ofuse and trimmed_amz and trimmed_x and is_bad_flag and save_blocked and saved_ok)
-    r.check('T73', '名刺編集・認証チャレンジUI：URL自動切り詰め・形式検証・コード再生成・Xポスト連携・モーダル開閉・バッジ解除', ok, 'pass',
-            '編集開=%s / 認証釦=%s / 認証開=%s / コード=%s / 再生成=%s / X連携=%s / バッジ=%s / 解除=%s / OFUSE切詰=%s / Amazon切詰=%s / X切詰=%s / 不正検知=%s / 保存防御=%s / 保存OK=%s'
+              trimmed_ofuse and trimmed_amz and trimmed_x and short_hint and is_bad_flag and save_blocked and saved_ok)
+    r.check('T73', '名刺編集・認証UI：URL自動切り詰め・短縮URLの案内・形式検証・鍵の行（取り出せない鍵）・Xポスト連携・モーダル開閉・バッジ解除', ok, 'pass',
+            '編集開=%s / 認証釦=%s / 認証開=%s / 鍵の行=%s / 取り出せない=%s / X連携=%s / バッジ=%s / 解除=%s / OFUSE切詰=%s / Amazon切詰=%s / X切詰=%s / 短縮案内=%s / 不正検知=%s / 保存防御=%s / 保存OK=%s'
             % (dlg_open, btn_shown, auth_open, code_text, refreshed_code, has_tweet_intent, badge_shown, unverified,
-               trimmed_ofuse, trimmed_amz, trimmed_x, is_bad_flag, save_blocked, saved_ok))
+               trimmed_ofuse, trimmed_amz, trimmed_x, short_hint, is_bad_flag, save_blocked, saved_ok))
 
 
 
@@ -3349,6 +3475,10 @@ def main():
             T72(r, room)
         if run('T73'):
             T73(r)
+        if run('T74'):
+            T74(r, room)
+        if run('T75'):
+            T75(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
