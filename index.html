@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.1
+  ぽっと通話〈実験版〉 v0.16.2
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -31,7 +31,9 @@
      ＝モジュール実行時にはキャッシュ済みになる。**URL は下の import と1文字も違えないこと**
      （違うとキャッシュに当たらず、黙って2回落とすことになる）。
      preconnect は DNS と TLS の握手を前倒しするだけ。モバイル回線ではここが各100〜300ms かかり、
-     直列に積み上がると体感の遅さになる。esm.sh 側は modulepreload が効かないブラウザ向けの保険。
+     直列に積み上がると体感の遅さになる。
+     ★v0.16.2 から Trystero・nostr-tools・QR は esm.sh ではなく**同じドメインの vendor/ から**読む（中身は esm.sh の
+     配布物そのまま・vendor/README.md）。第三者 CDN が侵害されても知らないコードが動かないように（脅威モデル S1）。
      `crossorigin` は必須：実際の取得が CORS（匿名）なので、付けないと別の接続として扱われ再利用されない。 -->
 <!-- 読み上げ（piper-plus）の import map。bare specifier（'piper-plus'・'@piper-plus/g2p'・'onnxruntime-web'）を CDN に写像する。
      ★modulepreload より**前**に置くこと（後に置くと import map は無視される）。読み込み自体は設定をオンにしたときの
@@ -43,9 +45,8 @@
   "@piper-plus/g2p/": "https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/",
   "onnxruntime-web":  "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.mjs"
 }}</script>
-<link rel="preconnect" href="https://esm.sh" crossorigin>
 <link rel="preconnect" href="https://pot-turn.itsuma-kuramoto.workers.dev" crossorigin>
-<link rel="modulepreload" href="https://esm.sh/trystero@0.25.4?bundle">
+<link rel="modulepreload" href="vendor/trystero-0.25.4.mjs">
 <!-- CSP：どこから読み、どこへ送ってよいかをブラウザに宣言する。GitHub Pages は HTTP ヘッダを
      足せないので <meta> で入れる（その制約で frame-ancestors は使えない＝クリックジャッキング
      対策は打てない）。単一 index.html にインラインの <style>/<script> があるため 'unsafe-inline'
@@ -63,11 +64,11 @@
      コンパイルに要る。声のモデルは v0.14.52 から repo 同梱（models/）＝'self' で足りる（huggingface.co の許可は外した）。 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
-  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://esm.sh https://static.cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com;
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
   media-src 'self' blob:;
-  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com https://api.github.com https://publish.x.com https://publish.twitter.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.ditto.pub;
+  connect-src 'self' https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com https://api.github.com https://publish.x.com https://publish.twitter.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.ditto.pub;
   manifest-src 'self';
   base-uri 'self';
   form-action 'none';
@@ -1681,7 +1682,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.1'
+const APP_VERSION = 'v0.16.2'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1926,10 +1927,10 @@ helpHide.checked = lsGet(HELP_HIDE_KEY) === '1'
 helpHide.onchange = () => lsSet(HELP_HIDE_KEY, helpHide.checked ? '1' : '')
 if (!rejoin && lsGet(HELP_HIDE_KEY) !== '1') openHelp()
 
-// 招待リンクのQRコード（参加中ボード内にトグル表示）。ライブラリは必要時だけ esm.sh から
+// 招待リンクのQRコード（参加中ボード内にトグル表示）。ライブラリは必要時だけ vendor/ から
 // 読み込み、生成はクライアント側＝リンクを外部に送らない。
 let qrLib = null, qrShown = false
-const loadQR = () => (qrLib ??= import('https://esm.sh/qrcode-generator@1.4.4').then(m => m.default || m).catch(e => { qrLib = null; throw e }))
+const loadQR = () => (qrLib ??= import('./vendor/qrcode-generator-1.4.4.mjs').then(m => m.default || m).catch(e => { qrLib = null; throw e }))
 const resetQr = () => { qrShown = false; $('qrBox').hidden = true; $('qr').setAttribute('aria-expanded', 'false'); $('qrImg').textContent = ''; $('qrRoom').textContent = ''; $('share').classList.remove('full') }
 $('qr').onclick = async () => {
   qrShown = !qrShown
@@ -3462,7 +3463,7 @@ const trysteroConfig = ice => (Array.isArray(ice) && ice.length > 0)
 // 失敗時はキャッシュを捨てて次回リトライできるようにする（参加フローの段階別エラー表示を壊さない）。
 let trysteroPromise = null, trysteroMod = null
 const loadTrystero = () => {
-  if (!trysteroPromise) trysteroPromise = import('https://esm.sh/trystero@0.25.4?bundle')
+  if (!trysteroPromise) trysteroPromise = import('./vendor/trystero-0.25.4.mjs')   // ★上の modulepreload と同じ URL に解決されること
     .then(m => (trysteroMod = m))
     .catch(e => { trysteroPromise = null; throw e })
   return trysteroPromise
@@ -7535,7 +7536,7 @@ const heartbeatPayload = () => {
 const NOSTR_RELAYS = TRYSTERO_BASE.relayConfig.urls
 const NOSTR_KIND = 20001
 let nostrLib = null, nostrPool = null, nostrKey = null
-const loadNostr = () => (nostrLib ??= import('https://esm.sh/nostr-tools@2.10.4').catch(e => { nostrLib = null; throw e }))
+const loadNostr = () => (nostrLib ??= import('./vendor/nostr-tools-2.10.4.mjs').catch(e => { nostrLib = null; throw e }))
 const roomHash = async room => {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('potto:' + room))
   return [...new Uint8Array(buf)].slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('')   // 先頭64bit

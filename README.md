@@ -60,7 +60,7 @@
 
 ### 構成
 - **`index.html` 1枚**。ビルド無し・`node_modules` 無し・バックエンド無し。
-- 依存は [Trystero](https://github.com/dmotz/trystero) 1つだけを、実行時に `esm.sh` から動的 `import`。
+- 依存は [Trystero](https://github.com/dmotz/trystero) 1つだけを、実行時に動的 `import`。v0.16.2 から、ファイルは CDN（esm.sh）ではなく**このリポジトリの `vendor/` に同梱**して自分のドメインから配っています（中身は esm.sh の配布物そのまま・`vendor/README.md`）。
 - 相手発見／シグナリングは公開 **Nostrリレー**、音声は **WebRTC（ブラウザ間 E2E 暗号化）**。**既定は Cloudflare TURN 中継経由**（`iceTransportPolicy:'relay'`）で、相手に自分の IP が見えないようにしている。TURN 資格情報が取れないときだけ通常の P2P/STUN にフォールバック（後述）。
 - 「ロビー（通話中の部屋一覧）」も固定の隠し部屋 `__lobby__` に全員が入り、通話中の人が在室を定期発信して集約する仕組み。**サーバは足していません。**
 - 「いま見ている人数」も同じロビーに相乗り。ページを開いた人は通話に入っていなくても `__lobby__` のメッシュに繋がるので、`onPeerJoin`/`onPeerLeave` でピアを数えて `+1`（自分）するだけ。**カウンタ用のサーバも API も無し。**
