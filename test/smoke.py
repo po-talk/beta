@@ -241,7 +241,8 @@ class Runner:
         tab.call('Runtime.enable')
         if block_esm:
             tab.call('Network.enable')
-            tab.call('Network.setBlockedURLs', urls=['*esm.sh*'])
+            # v0.16.2 から Trystero は同梱（vendor/）。ライブラリの読み込み失敗は、その 1 本を塞いで作る
+            tab.call('Network.setBlockedURLs', urls=['*vendor/trystero-*'])
         tab.call('Page.addScriptToEvaluateOnNewDocument', source=INSTRUMENT)
         tab.call('Page.navigate', url=self.args.url + hash_)
         if not tab.wait_for(BOOTED, timeout=SHORT):
@@ -2233,7 +2234,7 @@ def T74(r, room):
     a = r.open_tab()
     a.eval("localStorage.removeItem('pot-call-card'); localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
     npub = a.eval("""(async () => {
-        const nt = await import('https://esm.sh/nostr-tools@2.10.4')
+        const nt = await import('./vendor/nostr-tools-2.10.4.mjs')
         const sk = nt.generateSecretKey(), pk = nt.getPublicKey(sk)
         window.__nt = nt; window.__sk = sk
         window.nostr = { getPublicKey: async () => pk, signEvent: async ev => nt.finalizeEvent(ev, sk) }
@@ -2337,6 +2338,37 @@ def T75(r, room):
     r.check('T75', 'ひとことの行を選ぶと無視のハートが見える（14px）・名前をもう一度押すと名刺', ok, 'pass',
             '参加=%s / 着信=%s / タップで選択=%s / ハート=%s / 名刺=%s' % (bool(joined), bool(arrived), picked, size, bool(card)))
     click_leave(a); click_leave(b)
+
+
+def T76(r, room):
+    """同梱ライブラリ（v0.16.2）：vendor/ のファイルが SHA256SUMS と一致し、ページは esm.sh へ一切取りに行かない
+
+    中身を 1 バイトでも変えたら落ちる（版を上げるときは vendor/README.md の手順で SHA256SUMS も揃える）。
+    参加・QR・在室の公開（nostr-tools）まで通して、読み込んだスクリプトの出どころを見る。
+    """
+    import hashlib
+    here = os.path.dirname(os.path.abspath(__file__))
+    vd = os.path.join(here, '..', 'vendor')
+    bad = []
+    for line in open(os.path.join(vd, 'SHA256SUMS')):
+        h, f = line.split()
+        if hashlib.sha256(open(os.path.join(vd, f), 'rb').read()).hexdigest() != h:
+            bad.append(f)
+    a = r.open_tab()
+    a.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(a, room + 'VND')
+    joined = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    a.eval("document.getElementById('qr').click()", await_promise=False)
+    qr = a.wait_for("!!document.querySelector('#qrImg svg')", timeout=SHORT)
+    time.sleep(3)   # 在室の公開（nostr-tools の読み込み）を待つ
+    urls = a.eval("JSON.stringify(performance.getEntriesByType('resource').map(e => e.name))")
+    names = json.loads(urls)
+    esm = [u for u in names if 'esm.sh' in u]
+    vend = sorted({u.split('/vendor/')[1] for u in names if '/vendor/' in u})
+    ok = bool(not bad and joined and qr and not esm and 'trystero-0.25.4.mjs' in vend and 'qrcode-generator-1.4.4.mjs' in vend)
+    r.check('T76', '同梱ライブラリ：SHA256SUMS と一致・esm.sh へ取りに行かない・vendor/ から読む', ok, 'pass',
+            '不一致=%s / 参加=%s / QR=%s / esm.sh=%s / vendor=%s' % (bad, bool(joined), bool(qr), esm[:3], vend))
+    click_leave(a)
 
 
 def T73(r):
@@ -3054,7 +3086,7 @@ def T9(r, room):
     """B-2：join がライブラリ読込で失敗したとき、マイクを離し hash も焼き付けない"""
     t = r.open_tab(block_esm=True)
     if not t.wait_for(BOOTED, timeout=SHORT):
-        r.check('T9', 'esm.sh 遮断時の起動', False, 'pass', 'ページが起動しなかった')
+        r.check('T9', 'Trystero の読み込みを塞いでも起動する', False, 'pass', 'ページが起動しなかった')
         return t
     r.join(t, room + '-fail')
     ok_state = t.wait_for("%s.includes('つなぐ準備に失敗')" % STATE, timeout=SHORT)
@@ -3121,11 +3153,11 @@ def T21(r, a):
     ブラウザは違反を securitypolicyviolation で必ず教えてくれるので、それを数える。
     通話・ロビー・TURN・Analytics を一通り通した**後**に見ること（読み込みは遅れて起きる）。
     """
-    # QR は押されるまで qrcode-generator を読みに行かない＝ここまでの流れでは esm.sh への
+    # QR は押されるまで qrcode-generator を読みに行かない＝ここまでの流れでは vendor/ への
     # 読み込みが1本ぶん試されていない。CSP の検査の前に通しておく。
     a.eval("document.getElementById('qr').click()", await_promise=False)
     qr = a.wait_for("!!document.querySelector('#qrImg svg')", timeout=SHORT)
-    r.check('T21b', 'QRコードが生成できる（esm.sh への読み込みが通る）', qr, 'pass',
+    r.check('T21b', 'QRコードが生成できる（vendor/ からの読み込みが通る）', qr, 'pass',
             '' if qr else 'SVG が出ない＝CSP の script-src を疑う')
 
     v = a.eval('JSON.stringify(__T.csp)')
@@ -3479,6 +3511,8 @@ def main():
             T74(r, room)
         if run('T75'):
             T75(r, room)
+        if run('T76'):
+            T76(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):

@@ -6,17 +6,19 @@
 
 ---
 
-## 実行時に読み込む依存（リポジトリには同梱していません）
+## 同梱して配る依存（`vendor/`・v0.16.2〜）
 
-以下は `index.html` から実行時に CDN（esm.sh）経由で読み込むもので、本リポジトリは
-これらのソースコードを再配布していません。参考として明記します。
+以下は esm.sh の配布物を**そのまま** `vendor/` に置き、`index.html` から実行時に読み込むものです（再配布にあたります）。
+ライセンス本文は、中に含まれる依存も含めて [vendor/LICENSES.md](vendor/LICENSES.md) にまとめています。
 
-- **Trystero** — MIT License — © Dan Motzenbecker
+- **Trystero**（`@trystero-p2p/core`・`@trystero-p2p/nostr` を含む）— MIT License — © Dan Motzenbecker
   https://github.com/dmotz/trystero
-- **qrcode-generator** — MIT License — © Kazuhiko Arase
-  https://github.com/kazuhikoarase/qrcode-generator
+  - 同梱：**@noble/secp256k1** — MIT License — © Paul Miller
 - **nostr-tools** — The Unlicense（パブリックドメイン相当・義務なし）
   https://github.com/nbd-wtf/nostr-tools
+  - 同梱：**@noble/ciphers**・**@noble/curves**・**@noble/hashes**・**@scure/base** — MIT License — © Paul Miller
+- **qrcode-generator** — MIT License — © Kazuhiko Arase
+  https://github.com/kazuhikoarase/qrcode-generator
 
 以下は「ひとことの読み上げ」（配信部屋・配信者がオンにしたときだけ）で、jsDelivr／unpkg／Hugging Face から実行時に読み込むもの。
 本リポジトリはこれらを再配布していません。
