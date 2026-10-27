@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.15
+  ぽっと通話〈実験版〉 v0.16.16
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1410,11 +1410,11 @@
 
   <details class="help-sec" open><summary>はじめての参加方法</summary>
     <ol>
-      <li><b>部屋を選ぶ</b>：下の「通話中の部屋」から。誰もいなくても、入って待てば次に来た人と話せます</li>
-      <li><b>名前を決めて「参加する」</b>：本名でなくて大丈夫です。マイクの使用をきかれたら「許可」（一度だけ）</li>
-      <li><b>ひとこと挨拶する</b>：「こんにちは」だけで十分です。聞いているだけでも大丈夫です</li>
+      <li><b>部屋を選ぶ</b>：下の「通話中の部屋」から部屋を選びます。誰もいなくても、入って待てば次に来た人と話せます</li>
+      <li><b>名前を決めて「参加する」</b>：名前を決めて「参加する」を押します。本名でなくて大丈夫です。マイクの使用をきかれたら「許可」を選びます（一度だけ）</li>
+      <li><b>ひとこと挨拶する</b>：ひとこと挨拶します。「こんにちは」だけで十分です。聞いているだけでも大丈夫です</li>
     </ol>
-    <p>友だちを呼ぶときは、部屋に入ってから<b>共有リンク</b>か <b>QR コード</b>を渡します。リンクがそのまま部屋の入口です。</p>
+    <p>友だちを呼ぶときは、部屋に入ってから<b>共有リンク</b>か <b>QR コード</b>を渡します。リンクを開いた人は、そのままその部屋に入ります。</p>
   </details>
 
   <details class="help-sec"><summary>注意</summary>
@@ -1492,7 +1492,6 @@
     <p class="cd-verify-msg" id="cdVerifyMsg"></p>
   </div>
   <div class="cd-foot">
-    <p class="cd-foot-note">※ P2Pオンデマンド名刺交換（サーバー不保持）</p>
     <button id="cdEditBtn" class="pf-card-btn" type="button" hidden>✏️ 自分の名刺を編集する</button>
     <button id="cdIgnore" type="button" hidden></button>
   </div>
@@ -1501,7 +1500,7 @@
 <dialog id="cardEditDlg" class="help-dialog card-dialog" aria-labelledby="ceTitle">
   <button class="help-x" id="ceClose" type="button" aria-label="閉じる">✕</button>
   <h2 id="ceTitle" style="margin:0 36px 8px 0">📇 名刺（プロフィール）設定</h2>
-  <p class="sub" style="margin:0 0 12px;font-size:12.5px">端末にのみ保存され、相手があなたのアイコン・名前を押した時だけ直接渡されます。</p>
+  <p class="sub" style="margin:0 0 12px;font-size:12.5px">名刺はこの端末にだけ保存され、相手があなたのアイコンか名前を押したときだけ、相手に直接渡されます。</p>
 
   <label class="ce-lbl">名刺アイコン（画像または絵文字）</label>
   <div class="ce-avatar-row">
@@ -1548,7 +1547,7 @@
     <span class="ce-name">🥐 Buy Me Coffee</span>
     <input type="text" id="ceTip_bmac" placeholder="URL または ユーザ名" autocomplete="off" maxlength="100">
   </div>
-  <p class="ce-note">※ Amazonほしい物リストは配送先の本名や住所バレにご注意ください。短縮 URL（amzn.asia など）は使えないので、一度開いて表示された URL を貼ってください。<br>※ URLを貼ると自動でIDに切り詰めます（形式不一致は赤枠）。</p>
+  <p class="ce-note">※ Amazon ほしい物リストは、配送先の本名や住所が相手に知られないよう、ご注意ください。短縮 URL（amzn.asia など）は使えないので、一度開いて表示された URL を貼ってください。<br>※ URLを貼ると自動でIDに切り詰めます（形式が合わないときは枠が赤くなります）。</p>
 
   <label class="ce-lbl">SNS ID（オプトイン本人確認対応）</label>
   <div class="ce-row">
@@ -1648,7 +1647,7 @@
 <dialog id="cardWarnDlg" class="help-dialog ignore-dialog" aria-labelledby="cdWarnTitle">
   <h2 id="cdWarnTitle">⚠️ 未検証のアカウントです</h2>
   <div class="cd-warn">
-    <p id="cdWarnMsg">このリンクは本人が所有しているか未検証です。なりすましにご注意ください。</p>
+    <p id="cdWarnMsg">このリンクが本人のものかは、まだ確かめていません。なりすましにご注意ください。</p>
     <div class="cd-warn-actions">
       <a id="cdWarnGo" href="#" target="_blank" rel="noopener noreferrer nofollow">開く</a>
       <button id="cdWarnNo" type="button">やめる</button>
@@ -1718,7 +1717,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.15'
+const APP_VERSION = 'v0.16.16'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2953,7 +2952,7 @@ const renderCardView = (uid, cardData) => {
     btn.hidden = !!allOk
     btn.disabled = st?.state === 'checking'
     btn.textContent = st?.state === 'checking' ? '確かめています…' : st?.state === 'done' ? 'もう一度確かめる' : '✅ を確かめる'
-    msg.textContent = !st ? '押すと、この人の SNS に本人確認の印があるかを、あなたの端末から確かめます（相手の SNS のサーバに問い合わせます）'
+    msg.textContent = !st ? '押すと、この人の SNS に本人確認用の鍵の行があるかを、あなたの端末から確かめます（相手の SNS のサーバに問い合わせます）'
       : st.state === 'checking' ? ''
       : st.old ? '相手のアプリが古く、確かめられません（相手が再読み込みすると確かめられるようになります）'
       : !st.key ? '⚠️ 名刺の鍵の持ち主であることを確かめられませんでした。なりすましの可能性があります'
@@ -3417,11 +3416,11 @@ $('caCopyPost').onclick = () => flashCopy($('caCopyPost'), makeXPostText(curAuth
 
 const AUTH_WHY = {
   notfound: 'アカウントが見つかりません',
-  limit: '問い合わせの回数制限中です。少し待ってからお試しください',
+  limit: '問い合わせの回数に制限がかかっています。少し待ってからお試しください',
   http: 'サービスに問い合わせられませんでした。公開アカウントか確認してください',
   author: '投稿者（署名した人）が入力したアカウントと違います',
   nocode: '鍵の行が見つかりませんでした。書き写しや保存を確認してください',
-  shape: '署名の形が正しくありません',
+  shape: '署名の形式が正しくありません',
   sig: '署名を確かめられませんでした',
   none: '署名がありません',
 }
@@ -4980,7 +4979,7 @@ let ntfRoom = ntfCan() && lsGet(NTF_ROOM_KEY) === '1' && Notification.permission
   const opt = $('ntfRoomOpt'), box = $('ntfRoom'), note = $('ntfRoomNote')
   opt.hidden = !ntfCan()
   box.checked = ntfRoom
-  const denied = () => { note.textContent = '（ブラウザの設定で通知が止められています。アドレス欄の左の印から許可できます）' }
+  const denied = () => { note.textContent = '（ブラウザの設定で通知が止められています。アドレス欄の左のアイコンから許可できます）' }
   if (ntfCan() && lsGet(NTF_ROOM_KEY) === '1' && Notification.permission === 'denied') denied()
   box.onchange = async () => {
     note.textContent = ''
@@ -5228,7 +5227,7 @@ const ttsStage = (msg) => {
 //   All execution providers failed: wasm: no available backend found. ERR: [wasm] RangeError: Out of memory
 // 復旧の詳しい順序（アプリ・タブを閉じる → それでも駄目なら端末の再起動が確実）は manual の「困ったとき」にある。
 const ttsErrText = raw => {
-  if (/out of memory/i.test(raw)) return '読み上げに使うメモリが足りませんでした。「つなぎ直す」を押すと直ることがあります（ほかのアプリやタブを閉じると入りやすくなります）'
+  if (/out of memory/i.test(raw)) return '読み上げに使うメモリが足りませんでした。「つなぎ直す」を押すと直ることがあります（ほかのアプリやタブを閉じると、メモリに収まりやすくなります）'
   if (/fetch|network|load failed|404/i.test(raw)) return '読み上げの読み込みに失敗しました。電波の良いところでもう一度お試しください'
   if (/no available backend|execution provider/i.test(raw)) return '読み上げの部品を動かせませんでした。「つなぎ直す」を押すと直ることがあります'
   return raw || '読み上げの準備に失敗しました'
@@ -5477,7 +5476,7 @@ const renderTtsSent = () => {
   el.hidden = !(ttsAllowed() && sndTts && ttsDest)
   if (el.hidden) return
   const n = [...call.peers].filter(id => call.ttsSent.has(id)).length
-  el.textContent = '届いている人：' + n + ' / ' + call.peers.size + ' 人' + (n < call.peers.size ? '（古い版の人には届きません。ページを開き直してもらってください）' : '')
+  el.textContent = '届いている人：' + n + ' / ' + call.peers.size + ' 人' + (n < call.peers.size ? '（古いバージョンのページを開いている人には届きません。ページを開き直してもらってください）' : '')
 }
 // 読み込み → 見本を 1 回読む（準備ができたことが耳で分かる）。トグル ON と、保存オンでの入室（warm）の両方から
 const ttsStart = (sample = true) => loadTts().then(() => {
