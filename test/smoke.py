@@ -2720,6 +2720,54 @@ def T84(r, room):
         click_leave(t)
 
 
+def T86(r, room):
+    """通話中の部屋の並び順（v0.16.15）：評価の関数と、自分の部屋が先頭に固定されること
+
+    関数（window.__potLobbyRank）：人数・話している人・伸び・話題・🌱・満員・黙っている時間・開いてからの時間で点を付け、
+    揺れ止め（差が 0.75 以下は入れ替えない・並べ替えの時刻でなければ出し入れだけ）と例外（自分の部屋が先頭・🌱 なら
+    ようこそ・やまびこを一番の部屋のすぐ下へ）を当てる。画面：ほかに 2 人の部屋があっても、ひとりでいる自分の部屋が一覧の先頭。
+    """
+    a = r.open_tab()
+    a.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    js = r"""(() => {
+      const R = window.__potLobbyRank, F = o => Object.assign({ n: 1, talkers: 0, mean: 0, silentMs: 0, grow: 0, tagged: false, sprout: false, full: false, ageSec: 600 }, o)
+      const lively = R.score(F({ n: 3, talkers: 2, mean: 1.5 })), lone = R.score(F({ n: 1 }))
+      const full = R.score(F({ n: 8, talkers: 2, mean: 1, full: true }))
+      const quiet = R.score(F({ n: 3, silentMs: 15 * 60000 })), loud3 = R.score(F({ n: 3, talkers: 1, mean: 1 }))
+      const old = R.score(F({ n: 3, ageSec: 6 * 3600 })), young = R.score(F({ n: 3 }))
+      const extras = R.score(F({ n: 2, grow: 2, tagged: true, sprout: true })) - R.score(F({ n: 2 }))
+      const keep = R.base(['a', 'b'], { a: 3, b: 3.5 }, true).join()
+      const swap = R.base(['a', 'b'], { a: 3, b: 4 }, true).join()
+      const hold = R.base(['a', 'b'], { a: 1, b: 9, c: 5 }, false).join()
+      const pin = R.apply(['x', 'y', 'w', 'e'], 'y', ['w', 'e']).join()
+      const pin2 = R.apply(['x', 'y'], '', ['w', 'e']).join()
+      return JSON.stringify({ lively: lively > lone, fullDown: full < loud3, quietDown: quiet < loud3 - 7, oldDown: Math.abs((young - old) - 2) < 1e-9,
+        extras: Math.abs(extras - 3.5) < 1e-9, keep, swap, hold, pin, pin2 })
+    })()"""
+    res = json.loads(a.eval(js))
+    fn_ok = (res['lively'] and res['fullDown'] and res['quietDown'] and res['oldDown'] and res['extras']
+             and res['keep'] == 'a,b' and res['swap'] == 'b,a' and res['hold'] == 'c,a,b'
+             and res['pin'] == 'y,x,w,e' and res['pin2'] == 'x,y')
+    # 画面：B・C が 2 人の部屋、A はひとりで別の部屋。A の一覧の先頭は自分の部屋（.here）
+    b = r.open_tab(); c = r.open_tab()
+    for t in (b, c):
+        t.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(b, room + 'RK2')
+    link = b.wait_for("location.hash.startsWith('#room=')", timeout=DISCOVER) and b.eval('location.hash')
+    c2 = r.open_tab(hash_=link) if link else c
+    c2.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    click_join(c2)
+    r.join(a, room + 'RK1')
+    rooms2 = a.wait_for("document.querySelectorAll('#lobbyList button.room').length >= 2", timeout=DISCOVER + 20)
+    first_here = a.wait_for("(document.querySelector('#lobbyList button.room') || {}).classList?.contains('here')", timeout=SHORT)
+    ok = bool(fn_ok and rooms2 and first_here)
+    r.check('T86', '通話中の部屋の並び順：評価の関数（人数・賑やかさ・満員・黙っている・時間・揺れ止め・例外）と、自分の部屋が先頭', ok, 'pass',
+            '関数=%s %s / 2部屋見えた=%s / 自分の部屋が先頭=%s' % (fn_ok, res, bool(rooms2), bool(first_here)))
+    for t in (a, b, c2):
+        try: click_leave(t)
+        except Exception: pass
+
+
 def T85(r, room):
     """β 限定の大音量テスト（?loudtest=1・v0.16.12）と、見張りの数値
 
@@ -3908,6 +3956,8 @@ def main():
             T84(r, room)
         if run('T85'):
             T85(r, room)
+        if run('T86'):
+            T86(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
