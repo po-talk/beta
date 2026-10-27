@@ -881,8 +881,8 @@ def T44(r):
     # ④ 元に戻した → 指紋が戻って2択が消える
     t2.eval("(() => { const i = document.getElementById('room'); i.value = '指紋テスト'; i.dispatchEvent(new Event('input')) })()")
     back_hidden = t2.eval(row); back_pk = t2.eval(pk)
-    # ボタンの文言：オーナー本人は「配信を始める」（v0.14.56）、聞き役なら「リスナーとして参加する」、改名後（🏠 で新しく作る）は「部屋を作る」
-    labels = owner_lbl == '配信を始める' and listener_lbl == 'リスナーとして参加する' and renamed_lbl == '部屋を作る'
+    # ボタンの文言：オーナー本人は「配信を始める」（v0.14.56）、聞き役なら「聞き役として参加する」（v0.16.17・用語集）、改名後（🏠 で新しく作る）は「部屋を作る」
+    labels = owner_lbl == '配信を始める' and listener_lbl == '聞き役として参加する' and renamed_lbl == '部屋を作る'
     ok = (owner_hidden and owner_bc and entry_live and listener_hidden and listener_pk and touched_hidden and touched_pk
           and renamed_shown and not renamed_pk and back_hidden and back_pk and labels)
     r.check('T44', '指紋付きのリンクでは部屋の種類を選ばせない（聞き役はボタンで分かる）', ok, 'pass',
@@ -974,7 +974,7 @@ def T46(r, room):
     # ③ hash 無し
     t3 = r.open_tab()
     plain = not t3.eval("document.getElementById('join').disabled") and t3.eval("document.getElementById('entryNote').hidden")
-    ok = (checking and asleep and join_hidden and '誰もいない' in note and returned and opened and note_gone
+    ok = (checking and asleep and join_hidden and '誰もいません' in note and returned and opened and note_gone
           and live and '開いています' in live_note and live_lbl == '参加する' and plain)
     r.check('T46', 'リンクで来た人は、部屋が開いているか見てから入る', ok, 'pass',
             '探している=%s / お休み中の案内=%s(%r) / 参加ボタンは隠れる=%s / 名前をつけて参加→ボタンが戻り欄にフォーカス=%s / 案内が消えた=%s / 参加できた=%s / 開いている部屋=%s(%r, %r) / 自分で打った人は即座=%s'
@@ -1641,7 +1641,7 @@ def T26(r, room):
     # v0.13.0：リンクは `#room=ハッシュ~pk~指紋&name=名前`。指紋は room= の末尾（& の前）
     room_id = url.split('#room=')[1].split('&')[0] if '#room=' in url else ''
     fp = room_id.split('~pk~')[-1] if '~pk~' in room_id else ''
-    ok = made and joined and kept == name and len(fp) == 22 and 'あなたの配信部屋' in note
+    ok = made and joined and kept == name and len(fp) == 22 and 'あなたの配信' in note
     r.check('T26', '配信部屋のリンクに指紋が乗る（部屋名の欄は名前だけ）', ok, 'pass',
             'リンク=%r / 入力欄=%r / 指紋=%s文字 / 説明=%r' % (url[-40:], kept, len(fp), note[:24]))
     click_leave(t)
@@ -2683,7 +2683,7 @@ def T84(r, room):
     """大音量の相手だけを自動で抑える（v0.16.11・脅威モデル B8）
 
     B のマイクを最大振幅の矩形波に差し替えて入る（改造クライアントの爆音の代わり）。C はテスト用の標準のマイク音。
-    見ている A では：B だけがリミッターの経路（via='limit'）に移り「自動で小さくしました」の知らせが出る／C は素の再生のまま（via=''）。
+    見ている A では：B だけがリミッターの経路（via='limit'）に移り「小さくしました」の知らせが出る（文は v0.16.17 で短く）／C は素の再生のまま（via=''）。
     ★B は最初に入る（あとから入るタブはリンクで読み込み直すので、差し替えが消える）。
     """
     name = room + 'LOUD'
@@ -2713,7 +2713,7 @@ def T84(r, room):
     badge = a.eval("[...document.querySelectorAll('#members .member')].filter(el => el.querySelector('.m-loud')).length")
     # 素の再生（<audio>）は、抑えた相手のぶんだけ止まり、ふつうの相手は鳴ったまま
     els = json.loads(a.eval("JSON.stringify([...document.querySelectorAll('audio:not(#appAudio)')].filter(e => e.srcObject).map(e => e.muted))"))
-    ok = bool(joined and caught and loud_n == 1 and len(normal) == 1 and normal[0]['via'] == '' and '自動で小さくしました' in notice and sorted(els) == [False, True] and visible and badge == 1)
+    ok = bool(joined and caught and loud_n == 1 and len(normal) == 1 and normal[0]['via'] == '' and '小さくしました' in notice and sorted(els) == [False, True] and visible and badge == 1)
     r.check('T84', '大音量の相手だけをリミッターに通して知らせる・ふつうの相手は素の再生のまま', ok, 'pass',
             '3人=%s / 検知=%s / 状態=%s / 素の再生の muted=%s / 知らせ=%r 見える=%s / 🔉の行=%s' % (bool(joined), bool(caught), st, els, notice[:40], visible, badge))
     for t in (a, b, c):
