@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.17
+  ぽっと通話〈実験版〉 v0.16.18
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1279,7 +1279,7 @@
            音は BGM と同じ出口（Web Audio → appAudio）から出す。OS の合成（Web Speech API）は v0.14.33〜41 で iOS に勝てず撤去
            （経緯は internal/HANDOFF と PLAN-tts-piper-2026-09-26.md）。**既定はオフ**＝オンにした操作が約 100MB の読み込みの合図 -->
       <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを つくよみちゃんが読み上げる</label>
-      <p class="vol-note" id="sndTtsNote" hidden>部屋の全員に聞こえます（🗣 つくよみちゃんの行に音が付きます）。初回は約 40 MB を読み込みます（Wi-Fi 推奨。2 回目からは端末に残ります）。
+      <p class="vol-note" id="sndTtsNote" hidden>部屋の全員に聞こえます。ダウンロードは初回だけです（約 40 MB・Wi-Fi 推奨）。
         ミュート中でも読みます。人が話している間は待って、間が空いてから読みます。この設定は保存されず、ページを開くたびにオフから始まります。</p>
       <!-- 名前を読まない（v0.14.55・利用者の要望）。こちらは保存する（読み方の好みなので） -->
       <label class="snd-opt" id="sndTtsNameRow" hidden><input type="checkbox" id="sndTtsNoName"> 🙊 投稿した人の名前は読まない</label>
@@ -1712,7 +1712,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.17'
+const APP_VERSION = 'v0.16.18'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -5431,7 +5431,7 @@ const stopSpeech = () => {
 // 設定行は配信部屋のオーナーの通話中だけ出す（armJoined と退出時に呼ぶ）。つなぎ直しでオンを引き継いだときは入室時に読み込み直す（ttsWarm）
 const syncTtsRow = () => {
   $('sndTtsRow').hidden = !ttsAllowed()
-  $('sndTtsNote').hidden = !(ttsAllowed() && sndTts)
+  $('sndTtsNote').hidden = !ttsAllowed()   // 行と同時に常時出す＝オンにする前に読める（v0.16.18・チェックしてからでは遅い）
   $('sndTtsNameRow').hidden = !(ttsAllowed() && sndTts)
   // 通話希望者募集（v0.15.9）は配信部屋のオーナーのときだけ出す。部屋を出た／オーナーでなくなったら畳んで締め切る
   const own = !!call.joinedId && call.bcast && !!call.ownerKey
