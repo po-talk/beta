@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.16
+  ぽっと通話〈実験版〉 v0.16.17
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -209,9 +209,7 @@
   .help-sec > *:not(summary):first-of-type{ margin-top:2px }
   .help-sec > *:last-child{ margin-bottom:10px }
   .help-dialog p.help-credit{ font-size:12.5px; color:var(--sub) }
-  .help-hide{ display:flex; align-items:center; gap:8px; margin:20px 0 12px; font-size:13px; color:var(--sub); cursor:pointer }
-  .help-hide input{ width:auto; margin:0; padding:0; accent-color:var(--accent) }
-  .help-close{ width:100%; margin:0; padding:12px; background:var(--mute); color:var(--text); border-radius:10px; font-weight:700 }
+  .help-close{ width:100%; margin:20px 0 0; padding:12px; background:var(--mute); color:var(--text); border-radius:10px; font-weight:700 }   /* 上の余白は「今後表示しない」（〜v0.16.16）の分を引き継ぐ */
   /* 無視の初回説明（ヘルプと同じ器・短いので内部スクロールは要らない） */
   .ignore-dialog{ max-width:380px }
   .ignore-dialog h2{ font-size:16px }
@@ -922,6 +920,7 @@
   .room-share:active{ transform:scale(0.92) }
   .room-share.copied{ color:var(--accent); background:var(--accent-dim) }
   .room-dur{ margin-top:4px; font-size:12px; color:var(--sub); display:flex; align-items:center; gap:8px }
+  .room-bot{ margin-top:4px; font-size:12px; color:var(--sub) }   /* やまびこ部屋の一言（v0.16.17） */
   .room-eq{ margin-left:auto; font-family:'Courier New',ui-monospace,monospace; font-size:15px;
     line-height:1; letter-spacing:1px; color:var(--link); text-shadow:0 0 6px var(--accent-glow) }
   .room-people{ margin-top:8px; display:flex; flex-wrap:wrap; gap:6px }
@@ -1124,7 +1123,7 @@
       <div id="avatars" class="avatars"></div>
 
       <div class="grow-note" id="growNote"></div>
-      <button id="btnOpenCardEdit" class="pf-card-btn" type="button">📇 名刺（プロフィールカード）を設定</button>
+      <button id="btnOpenCardEdit" class="pf-card-btn" type="button">📇 名刺を作る</button>
     </div></div>
   </details>
 
@@ -1141,8 +1140,8 @@
          共有リンクを確定させる（＝先に配ってから入れる）。
          他人の配信部屋のリンクを開いている間は JS がこの2つごと隠す（部屋の正体はURLで決まっているため） -->
     <div id="kindRow" class="kind" role="radiogroup" aria-label="部屋の種類">
-      <label class="snd-opt"><input type="radio" name="kind" id="kindBc"> 📣 配信部屋にする（あなたの声だけ流れます）</label>
-      <label class="snd-opt"><input type="radio" name="kind" id="kindChat" checked> 🏠 雑談部屋にする（全員で話せます）</label>
+      <label class="snd-opt"><input type="radio" name="kind" id="kindBc"> 📣 配信（あなたの声だけ）</label>
+      <label class="snd-opt"><input type="radio" name="kind" id="kindChat" checked> 🏠 雑談（みんなで話す）</label>
     </div>
   </div>
       <!-- 参加ボタンもこの中。**部屋名と対で使うもの**なので、畳んだときに一緒に消えるのが素直
@@ -1310,7 +1309,7 @@
          カードの上に置くと、スマホでは参加者リストを見ている間に画面の外へ出て目に入らない。
          比率は ミュート：退出 ＝ 3：2（よく押すほうを大きく／退出は誤タップしにくく）。
          🔊 音声を有効化も同じ理由でここ（v0.11.8）。出ている間は最優先なので、ミュート／退出の直上 -->
-    <button id="unlock">🔊 音声を有効化（タップ）</button>
+    <button id="unlock">🔊 タップして音を出す</button>
     <!-- 退出の確認（v0.14.2）。★confirm() は使わない：ダイアログが開いている間はページの JS が止まり、
          BGM の譜面送りも復帰の見張りも止まる→閉じた瞬間にまとめて動いて音が連なる（v0.11.9 で直した
          連射がこの経路で再発した・2026-09-20）。ページ内の2択なら何も止まらない。 -->
@@ -1334,7 +1333,7 @@
         <div id="qrImg" class="qr-img">生成中…</div>
         <div id="qrRoom" class="qr-room"></div>
       </div>
-      <span id="shareLabel">共有リンク：</span><br><a class="share" id="share" href="#"></a>
+      <span id="shareLabel">招待リンク：</span><br><a class="share" id="share" href="#"></a>
       <div class="share-actions">
         <button id="copy">🔗 招待リンクをコピー</button>
         <button id="qr" aria-expanded="false">📱 QRコード</button>
@@ -1366,15 +1365,15 @@
   </div>
   <div class="lobby-status" id="lobbyStatus">🛰 ロビーに接続中…</div>
   <div class="lobby-list" id="lobbyList"></div>
-  <label class="snd-opt"><input type="checkbox" id="sndRoom"> 🔔 新しい部屋ができたら音で知らせる</label>
-  <label class="snd-opt" id="ntfRoomOpt" hidden><input type="checkbox" id="ntfRoom"> 📢 パソコンの通知でも知らせる（ほかの画面を見ているとき）<span class="ntf-note" id="ntfRoomNote"></span></label>
+  <!-- 知らせの制約（このタブを開いている間だけ）は、いつも出す注記ではなく 🔔 をオンにした瞬間に一度だけ（v0.16.17・PLAN-ui-text 原則 2） -->
+  <label class="snd-opt"><input type="checkbox" id="sndRoom"> 🔔 新しい部屋ができたら音で知らせる<span class="ntf-note" id="sndRoomNote"></span></label>
+  <label class="snd-opt" id="ntfRoomOpt" hidden><input type="checkbox" id="ntfRoom"> 📢 パソコンの通知でも知らせる<span class="ntf-note" id="ntfRoomNote"></span></label>
   <div class="lobby-viewers" id="lobbyViewers"></div>
-  <p class="lobby-note">部屋をタップするとそのまま入室します。通話中は確認のうえ移動します。<br>新しい部屋の音と通知は、このタブを開いている間だけ届きます（閉じると届きません。スマホは裏に回ると届きません）。タブの名前にも、通話中の部屋の数が出ます。</p>
 </aside>
 </div>
 
 <footer class="legal">
-  このサイトはアクセス測定に <a href="https://www.cloudflare.com/web-analytics/" target="_blank" rel="noopener">Cloudflare Web Analytics</a> を利用しています（Cookie不使用・個人を特定する情報は取得しません）。
+  アクセス数だけ <a href="https://www.cloudflare.com/web-analytics/" target="_blank" rel="noopener">Cloudflare Web Analytics</a> で測っています（Cookie なし）。
 </footer>
 
 <!-- 公開されたお便りを大きく出す紙。**モーダルにしない**のが要点で、後ろの通話操作
@@ -1396,7 +1395,7 @@
   <button id="helpX" class="help-x" type="button" aria-label="閉じる">✕</button>
   <h2>🫖 これはなに？</h2>
 
-  <p>登録なし・インストールなしで、居合わせた人と<b>声だけで話せる</b>小さなお茶の席です。同じ部屋を開いた人どうしが、そのまま話せます。配信アプリ POPOPO にインスパイアされて作りました。</p>
+  <p>登録なしで、居合わせた人と<b>声だけで話せる</b>小さなお茶の席です（配信アプリ POPOPO から着想）。</p>
   <p class="help-warn">⚠️ 実験中です。ご利用は自己責任で！</p>
 
   <!-- 詳しい説明は案内ページへ（v0.14.25 で本体のヘルプを短くした）。別タブで開く＝通話を切らない -->
@@ -1410,21 +1409,19 @@
 
   <details class="help-sec" open><summary>はじめての参加方法</summary>
     <ol>
-      <li><b>部屋を選ぶ</b>：下の「通話中の部屋」から部屋を選びます。誰もいなくても、入って待てば次に来た人と話せます</li>
-      <li><b>名前を決めて「参加する」</b>：名前を決めて「参加する」を押します。本名でなくて大丈夫です。マイクの使用をきかれたら「許可」を選びます（一度だけ）</li>
-      <li><b>ひとこと挨拶する</b>：ひとこと挨拶します。「こんにちは」だけで十分です。聞いているだけでも大丈夫です</li>
+      <li><b>名前を決める</b>：本名でなくて大丈夫です</li>
+      <li><b>部屋を選んで「参加する」</b>：下の「通話中の部屋」から部屋をタップし、「参加する」を押します。誰もいなくても、入って待てば次に来た人と話せます。マイクの使用をきかれたら「許可」を選びます（一度だけ）</li>
+      <li><b>ひとこと挨拶する</b>：「こんにちは」だけで十分です。聞いているだけでも大丈夫です</li>
     </ol>
-    <p>友だちを呼ぶときは、部屋に入ってから<b>共有リンク</b>か <b>QR コード</b>を渡します。リンクを開いた人は、そのままその部屋に入ります。</p>
+    <p>友だちを呼ぶときは、部屋に入ってから<b>招待リンク</b>か <b>QR コード</b>を渡します。リンクを開いた人は、そのままその部屋に入ります。</p>
   </details>
 
   <details class="help-sec"><summary>注意</summary>
     <ul>
-      <li>マイクの許可が必要です。<b>Safari / Chrome で開いてください</b>（LINE や X の中のブラウザは不可）</li>
-      <li>iPhone では「音声を有効化」が出ることがあります。画面のどこかをタップすると鳴ります</li>
-      <li>快適なのは <b>4〜6 人</b>くらいまで（全員が全員につながる方式のため）</li>
+      <li><b>Safari / Chrome で開いてください</b>（LINE や X の中のブラウザではマイクが使えません）</li>
+      <li>快適なのは <b>4〜6 人</b>くらいまで</li>
       <li>非公開の部屋はありません。人がいる部屋はかならず一覧に出ます</li>
-      <li>過去の会話は残りません（録音・保存なし）。ブラウザが違えば別の人として扱われます</li>
-      <li>配信部屋では、配信者がオンにすると「ひとこと」が声で読み上げられ、部屋の全員に聞こえます（声と顔：つくよみちゃん）</li>
+      <li>過去の会話は残りません（録音・保存なし）</li>
     </ul>
     <p>詳しくは<a href="https://potalk.app/manual/#trouble" target="_blank" rel="noopener">使い方の「困ったとき」</a>へ。</p>
   </details>
@@ -1436,11 +1433,9 @@
 
   <details class="help-sec"><summary>制作者</summary>
     <p>♨️🦈 qramo（クラモ）<a href="https://x.com/qraPo3" target="_blank" rel="noopener">@qraPo3</a>。開発の報告や勉強会は、ぽっと通話の部屋で開きます（日時は X で）。</p>
-    <p class="help-credit">🤖 開発は <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a> と一緒に</p>
     <p class="help-credit">🗣 読み上げの声と顔：フリー素材キャラクター「つくよみちゃん」<a href="https://tyc.rei-yumesaki.net/" target="_blank" rel="noopener">tyc.rei-yumesaki.net</a>（声：つくよみちゃんコーパス／Illustration by 夢前黎）。音声合成は <a href="https://github.com/ayutaz/piper-plus" target="_blank" rel="noopener">piper-plus</a>（MIT）</p>
   </details>
 
-  <label class="help-hide"><input type="checkbox" id="helpHide"> 今後表示しない</label>
   <button id="helpClose" class="help-close" type="button">閉じる</button>
 </dialog>
 <!-- 無視の初回説明（v0.14.6）。★confirm() 不可の理由は #leaveConfirm のコメント。<dialog>.showModal() は
@@ -1448,10 +1443,10 @@
 <dialog id="ignoreDlg" class="help-dialog ignore-dialog" aria-labelledby="ignoreTitle">
   <h2 id="ignoreTitle">🙈 この人の音を受け取らないようにします</h2>
   <ul>
-    <li>押したことは相手には伝わりません（通知も出ません）</li>
+    <li>相手には伝わりません（通知も出ません）</li>
+    <li><b>相手にはあなたの声が聞こえたままです</b></li>
+    <li>相手が部屋に入り直すと外れます</li>
     <li>もう一度押せばいつでも戻せます</li>
-    <li>ただし相手には、<b>あなたの声が聞こえたままです</b>。本当に離れたいときは退出してください</li>
-    <li>なお相手が部屋に入り直すと無視は外れます</li>
   </ul>
   <div class="ignore-actions">
     <button id="ignoreYes" type="button">無視する</button>
@@ -1521,7 +1516,7 @@
   <textarea id="ceBio" maxlength="60" placeholder="自己紹介やステータスなど（最大60文字）" rows="2"></textarea>
   
   <label class="ce-lbl">お礼・チップ窓口（提示する1件を選択）</label>
-  <label class="ce-none"><input type="radio" name="ceTipOpt" value="none" checked> 提示しない（非表示）</label>
+  <label class="ce-none"><input type="radio" name="ceTipOpt" value="none" checked> 提示しない</label>
   <div class="ce-row">
     <input type="radio" name="ceTipOpt" value="ofuse" id="ceTipR_ofuse">
     <span class="ce-name">☕ OFUSE</span>
@@ -1544,23 +1539,23 @@
   </div>
   <div class="ce-row">
     <input type="radio" name="ceTipOpt" value="bmac" id="ceTipR_bmac">
-    <span class="ce-name">🥐 Buy Me Coffee</span>
+    <span class="ce-name">🥐 Buy Me a Coffee</span>
     <input type="text" id="ceTip_bmac" placeholder="URL または ユーザ名" autocomplete="off" maxlength="100">
   </div>
   <p class="ce-note">※ Amazon ほしい物リストは、配送先の本名や住所が相手に知られないよう、ご注意ください。短縮 URL（amzn.asia など）は使えないので、一度開いて表示された URL を貼ってください。<br>※ URLを貼ると自動でIDに切り詰めます（形式が合わないときは枠が赤くなります）。</p>
 
   <label class="ce-lbl">SNS ID（オプトイン本人確認対応）</label>
   <div class="ce-row">
-    <span class="ce-name">𝕏 (Twitter)</span>
+    <span class="ce-name">𝕏</span>
     <input type="text" id="ceSns_x" placeholder="URL または @ID" autocomplete="off" maxlength="100">
     <button class="ce-ver-btn" id="ceBtnVer_x" type="button" title="本人確認を行う">認証</button>
-    <span class="ce-ver-badge" id="ceVerBadge_x" title="認証済み（タップで解除）" hidden>✅</span>
+    <span class="ce-ver-badge" id="ceVerBadge_x" title="確認済み（タップで解除）" hidden>✅</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">🐙 GitHub</span>
     <input type="text" id="ceSns_github" placeholder="URL または ユーザ名" autocomplete="off" maxlength="100">
     <button class="ce-ver-btn" id="ceBtnVer_github" type="button" title="本人確認を行う">認証</button>
-    <span class="ce-ver-badge" id="ceVerBadge_github" title="認証済み（タップで解除）" hidden>✅</span>
+    <span class="ce-ver-badge" id="ceVerBadge_github" title="確認済み（タップで解除）" hidden>✅</span>
   </div>
   <div class="ce-row">
     <span class="ce-name">📝 note</span>
@@ -1581,7 +1576,7 @@
     <span class="ce-name">🟣 Nostr</span>
     <input type="text" id="ceSns_nostr" placeholder="URL または npub1..." autocomplete="off" maxlength="100">
     <button class="ce-ver-btn" id="ceBtnVer_nostr" type="button" title="拡張機能で本人確認">認証</button>
-    <span class="ce-ver-badge" id="ceVerBadge_nostr" title="認証済み（タップで解除）" hidden>✅</span>
+    <span class="ce-ver-badge" id="ceVerBadge_nostr" title="確認済み（タップで解除）" hidden>✅</span>
   </div>
   <p class="ce-note">※ 各サービスのプロフィールURLを貼ると自動でIDに切り詰めます。「認証」で本人確認すると、相手が「✅ を確かめる」を押したときに ✅ が付きます。<br>※ ブラウザのデータを消すと名刺の鍵が変わり、もう一度認証が必要です。</p>
 
@@ -1717,7 +1712,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.16'
+const APP_VERSION = 'v0.16.17'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1956,13 +1951,12 @@ const rejoin = (() => {
   } catch { return null }
 })()
 
-// 「今後表示しない」設定（localStorage）。オプトアウトしていなければアクセス時に自動で開く。
+// 助言は**初回だけ**自動で開く（v0.16.17・PLAN-ui-text 原則 2）。一度閉じたら記録し、2 回目からは「これはなに？」で開く。
+// 鍵の名前は「今後表示しない」チェック（〜v0.16.16）のものをそのまま使う＝すでに外していた人はそのまま出ない。
 // ただし**つなぎ直しの最中は出さない**：通話を復旧している最中に説明を被せても邪魔なだけで、
 // しかも本人はページが再読込されたことを知らないので「なぜ今？」になる。
 const HELP_HIDE_KEY = 'pot-call-hide-help'
-const helpHide = $('helpHide')
-helpHide.checked = lsGet(HELP_HIDE_KEY) === '1'
-helpHide.onchange = () => lsSet(HELP_HIDE_KEY, helpHide.checked ? '1' : '')
+helpDialog.addEventListener('close', () => lsSet(HELP_HIDE_KEY, '1'))
 if (!rejoin && lsGet(HELP_HIDE_KEY) !== '1') openHelp()
 
 // 招待リンクのQRコード（参加中ボード内にトグル表示）。ライブラリは必要時だけ vendor/ から
@@ -2203,7 +2197,7 @@ const syncShare = () => {
   if (!nm) return
   const url = roomUrl(n, nm)
   $('share').textContent = url; $('share').href = url
-  $('shareLabel').textContent = (call.joinedId ? '共有リンク' : '招待リンク（まだ参加していません）') + '（タップで URL だけコピー）：'
+  $('shareLabel').textContent = '招待リンク' + (call.joinedId ? '' : '（まだ参加していません）') + '（タップで URL だけコピー）：'
   if (qrShown) drawQr()   // QRを開いたまま部屋名を変えたら描き直す
 }
 
@@ -2275,7 +2269,7 @@ const syncKindRow = () => {
   $('joinLbl').textContent = entry.state === 'checking'
     ? 'この部屋を探しています…'
     : foreign
-      ? 'リスナーとして参加する'
+      ? '聞き役として参加する'
       : ownBc
         ? '配信を始める'
         : isCreate
@@ -2367,9 +2361,10 @@ AVATARS.forEach(e => {
   avatarsEl.appendChild(b)
 })
 
-// 初回（保存データなし）は開いた状態、以降は閉じた状態を初期値にする
+// 名前の欄は**畳んだ状態**から始める（v0.16.17・PLAN-ui-text 原則 1）。〜v0.16.16 は初回だけ開いていた＝
+// 最初の画面にアバター 16 個と 🌱 の説明と名刺のボタンまで並んで、文字が多かった。
 const profileBox = $('profileBox')
-profileBox.open = !savedRaw
+profileBox.open = false
 const syncToggleLabel = () => { $('pfEdit').textContent = profileBox.open ? '閉じる ▴' : '変更 ▾' }
 profileBox.addEventListener('toggle', syncToggleLabel)  // 開閉に追従して文言を切り替え
 syncToggleLabel()
@@ -2414,7 +2409,7 @@ const stageOf = () => {
   if (stats.joins >= 3 && min >= 5) return '🌿'   // 最初の1段だけは初日でも反応（ごほうび）
   return '🌱'
 }
-const STAGE_NOTE = { '🌱': '🌱（←話して育てよう）', '🌿': '🌿（すくすく）', '🌷': '🌷（花がさいた）', '🌻': '🌻（大きな花がさいた）', '🌲': '🌲（りっぱな針葉樹！）', '🌳': '🌳（りっぱな広葉樹！）' }
+const STAGE_NOTE = { '🌱': '🌱（話すと育ちます）', '🌿': '🌿（すくすく）', '🌷': '🌷（花がさいた）', '🌻': '🌻（大きな花がさいた）', '🌲': '🌲（りっぱな針葉樹！）', '🌳': '🌳（りっぱな広葉樹！）' }
 const renderGrow = () => { $('growNote').textContent = STAGE_NOTE[stageOf()] }
 renderGrow()
 // 参加中はプロフィール変更を止める（名前・絵文字は参加時に送ったきりで、途中で変えても相手に届かない）
@@ -2671,7 +2666,7 @@ const TIP_DEFS = {
     url: id => 'https://ko-fi.com/' + id
   },
   bmac: {
-    name: 'Buy Me a Coffee', label: '🥐 Buy Me Coffee でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
+    name: 'Buy Me a Coffee', label: '🥐 Buy Me a Coffee でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
     parse: s => {
       s = s.trim()
       const m = s.match(/(?:https?:\/\/)?(?:www\.)?buymeacoffee\.com\/([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i)
@@ -2873,7 +2868,7 @@ const renderCardView = (uid, cardData) => {
     $('cdSubEmoji').hidden = true
   }
   $('cdName').textContent = p.name || (you ? 'あなた' : 'ゲスト')
-  $('cdState').textContent = you ? '通話中（あなた）' : (call.ignored.has(uid) ? '非表示（無視中）' : '通話中')
+  $('cdState').textContent = you ? '通話中（あなた）' : (call.ignored.has(uid) ? '無視中' : '通話中')
 
   // bio
   const bio = cardData?.bio || ''
@@ -2933,7 +2928,7 @@ const renderCardView = (uid, cardData) => {
     sBadge.className = state === 'ok' ? 'cd-ok' : 'cd-un' + (state === 'claim' ? ' claim' : '')
     sBadge.textContent = VER_LABEL[state]
     sBadge.title = state === 'ok' ? (you ? 'あなたの端末で本人確認済み' : 'この通話で本人確認しました')
-      : state === 'claim' ? '本人は認証済みと言っています。「✅ を確かめる」で確かめられます'
+      : state === 'claim' ? '本人は確認済みと言っています。「✅ を確かめる」で確かめられます'
       : state === 'none' ? '自己申告' : '確かめましたが、本人のものと確認できませんでした'
     a.append(sName, sId, sBadge)
     if (state !== 'ok') {   // ✅ 以外は開く前に注意を挟む
@@ -2965,7 +2960,7 @@ const renderCardView = (uid, cardData) => {
   $('cdIgnore').hidden = you
   if (!you) {
     const isIg = call.ignored.has(uid)
-    $('cdIgnore').innerHTML = (isIg ? HEART_BROKEN_SVG : HEART_SVG) + ' <span>' + (isIg ? '非表示と消音を解除する' : 'この人を非表示 ＆ 消音（自衛）') + '</span>'
+    $('cdIgnore').innerHTML = (isIg ? HEART_BROKEN_SVG : HEART_SVG) + ' <span>' + (isIg ? '無視をやめる' : 'この人を無視する') + '</span>'
     $('cdIgnore').classList.toggle('is-ignored', isIg)
     $('cdIgnore').onclick = () => {
       if (call.ignored.has(uid)) unignorePeer(uid)
@@ -3052,7 +3047,7 @@ const openLinkConfirm = (title, msg, url, kind) => {
 }
 const openCardWarn = (serviceName, id, url, state) => openLinkConfirm(
   '⚠️ 未検証の ' + serviceName + ' です',
-  'このリンク (' + shortenNpub(id) + ') は' + (state === 'claim' ? '、本人は認証済みと言っていますが、まだ確かめていません。「✅ を確かめる」で確かめられます。'
+  'このリンク (' + shortenNpub(id) + ') は' + (state === 'claim' ? '、本人は確認済みと言っていますが、まだ確かめていません。「✅ を確かめる」で確かめられます。'
     : state === 'ng' || state === 'err' ? '、確かめましたが本人のものと確認できませんでした。'
     : '本人の申告だけで、本人のものか確かめられていません。') + 'なりすましにご注意ください。', url, 'warn')
 $('cdWarnNo').onclick = () => { $('cardWarnDlg').close() }
@@ -3371,7 +3366,7 @@ const openCardAuth = async service => {
     $('caInputSec').hidden = true
     $('caNote').textContent = '※ 相手はあなたの名刺を見るたびに bio を確かめます。bio から消すと、相手の画面で ✅ が付かなくなります。' + keep
   } else if (service === 'x') {
-    $('caTitle').textContent = '𝕏 (Twitter) 本人確認'
+    $('caTitle').textContent = '𝕏 本人確認'
     $('caAccount').textContent = '対象アカウント: @' + id
     $('caDesc').textContent = '「𝕏 でポストする」から下の文面を投稿し、そのポストのリンクを貼って「確認する」を押してください。'
     $('caCodeSec').hidden = false
@@ -3467,7 +3462,7 @@ $('caVerifyBtn').onclick = async () => {
     msg.className = 'ca-msg ok'
     msg.textContent = '🎉 本人確認ができました。相手の画面では、相手が「✅ を確かめる」を押すと ✅ が付きます。'
     msg.hidden = false
-    btn.textContent = '✅ 認証完了'
+    btn.textContent = '✅ 確認できました'
 
     const c = loadCard()
     c.proofs = c.proofs || {}
@@ -4232,7 +4227,7 @@ const onLoudPeer = uid => {
   call.loud.set(uid, Date.now()); call.loudHits.delete(uid)
   routePeer(uid)
   const name = uid === 'tts' ? '読み上げ' : ((call.profiles.get(uid) || {}).name || 'ゲスト') + ' さん'
-  showPeerNotice('🔉 ' + name + 'の音がとても大きいので、自動で小さくしました（名前の横に 🔉）。続くようなら、その人の ❤️ から「無視」もできます', 20000)
+  showPeerNotice('🔉 ' + name + 'の音が大きすぎたので、小さくしました（続くなら ❤️ で無視できます）', 20000)
   renderMembers()
 }
 const startLoudWatch = () => { if (!loudTimer) loudTimer = setInterval(loudTick, LOUD_TICK_MS) }
@@ -4925,6 +4920,7 @@ $('pipVideo').addEventListener('webkitpresentationmodechanged', renderPip)   // 
 // 消える事故が起きる。他の localStorage キーも同じ理由で PROFILE_KEY 等に揃えてある）
 const SND_PEER_KEY = 'pot-call-snd-peer'
 const SND_ROOM_KEY = 'pot-call-snd-room'
+const SND_ROOM_NOTE_KEY = 'pot-call-snd-room-note'   // 🔔 の制約の知らせを一度出したか（v0.16.17）
 const SND_REACT_KEY = 'pot-call-snd-react'
 let sndPeer = lsGet(SND_PEER_KEY) !== '0'   // 未保存＝オン
 let sndRoom = lsGet(SND_ROOM_KEY) === '1'   // 未保存＝オフ
@@ -4963,6 +4959,9 @@ const soundRoom  = () => { if (sndRoom) playTones([[988, 0, 0.09], [1319, 0.08, 
   roomBox.onchange = () => {
     sndRoom = roomBox.checked; lsSet(SND_ROOM_KEY, sndRoom ? '1' : '0')
     if (sndRoom) { ensureAudioCtx(); soundRoom() }   // オンにした操作で解錠＋見本を1回鳴らす
+    // 制約の知らせは**オンにした瞬間に一度だけ**（v0.16.17）。ロビーの常設の注記をやめた代わり
+    $('sndRoomNote').textContent = sndRoom && lsGet(SND_ROOM_NOTE_KEY) !== '1' ? 'このタブを開いている間だけ知らせます' : ''
+    if (sndRoom) lsSet(SND_ROOM_NOTE_KEY, '1')
   }
 }
 
@@ -5680,7 +5679,7 @@ const renderCrowd = () => {
   if (el.hidden) return
   el.textContent = n >= roomCap()
     ? '👥 ' + n + '人です。この部屋の上限（' + roomCap() + '人）に達しました'
-    : '👥 ' + n + '人になりました。あと ' + (roomCap() - n) + '人まで（多いほど音が途切れやすくなります）'
+    : '👥 あと ' + (roomCap() - n) + '人まで（多いと途切れやすくなります）'
 }
 // 入ってきた自分が定員を超えていたら、自分から抜ける。**一瞬入って出る**ことになるが、
 // 満室のまま全員の通話が重くなるより、入れなかったと分かるほうがよい。
@@ -5881,7 +5880,7 @@ const unlockNow = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catc
 let unlockArmed = false
 const showUnlock = () => {
   $('unlock').style.display = 'block'
-  showPeerNotice('🔊 音が止まっています。画面のどこかをタップすると鳴ります')
+  showPeerNotice('🔊 音が止まっています。どこかをタップすると鳴ります')
   if (unlockArmed) return
   unlockArmed = true
   const once = () => { unlockArmed = false; if ($('unlock').style.display !== 'none') unlockNow() }
@@ -5897,7 +5896,7 @@ const renderAudioWarn = ids => {
   el.hidden = !ids.length
   if (!ids.length) return
   const who = ids.map(id => (call.profiles.get(id) || {}).name || '相手').join('、')
-  el.textContent = '🔈 ' + who + ' の音がまだ届いていません。「つなぎ直す」を試してみてください'
+  el.textContent = '🔈 ' + who + 'さんの音が届いていません。「つなぎ直す」を試してください'
 }
 const checkAudioArrival = () => {
   if (!call.room) return
@@ -6593,11 +6592,11 @@ const renderBcNote = () => {
       : '📣 配信が終了しました。' + left + ' 秒後に「通話中の部屋」へ戻ります'
   } else {
     txt = call.ownerKey
-      ? '📣 あなたの配信部屋です。ほかの人の声は誰にも流れません（🎙 を押すとその人も話せます）'
+      ? '📣 あなたの配信です。ほかの人の声は流れません（🎙 を押すとその人も話せます）'
       : call.speakers.has(myPeerId)
         ? '🎙 あなたは話す許可を持っています'
         : call.speakers.size
-          ? '📣 配信部屋です。配信者の声だけが流れます（あなたのマイクは使いません）'
+          ? '📣 配信者の声だけが流れます（あなたのマイクは使いません）'
           : '📣 配信部屋です。まだ配信者が来ていません'
   }
   // × で閉じた案内は、**同じ内容の間だけ**閉じたまま（登壇許可・配信終了など内容が変われば出し直す・v0.15.15）。
@@ -6711,7 +6710,7 @@ const renderMail = () => {
   }
   if (call.ownerKey) {                       // ── 枠主 ──
     if (!call.mailOpen) {
-      head.append(line('お題を出して、リスナーからお便りを募集できます。'))
+      head.append(line('お題を出して、聞き役からお便りを募集できます。'))
       body.append(line('例：「最近食べて美味しかったもの」。集まったお便りはあなたにだけ並び、選んだものだけが部屋に出ます。', 'mail-empty'))
       mailForm.hidden = false
       mailText.maxLength = MAIL_TITLE_MAX
@@ -6738,13 +6737,13 @@ const renderMail = () => {
   } else {                                   // ── リスナー ──
     if (!call.mailOpen) {
       head.append(line('いまはお便りを募集していません。'))
-      body.append(line('枠主がお題を出すと、ここに書けるようになります。', 'mail-empty'))
+      body.append(line('配信者がお題を出すと、ここに書けるようになります。', 'mail-empty'))
       mailForm.hidden = true
     } else {
       head.append(line('📮 ' + call.mailTitle))
       body.append(call.mailSent
         ? line('送ったお便り：' + call.mailSent, 'mail-item')
-        : line('お便りは枠主にだけ届きます。読まれると部屋のみんなに出ます。', 'mail-empty'))
+        : line('お便りは配信者にだけ届きます。読まれると部屋のみんなに出ます。', 'mail-empty'))
       mailForm.hidden = false
       mailText.maxLength = MAIL_TEXT_MAX
       mailText.placeholder = 'お便りを書く…'
@@ -7698,7 +7697,7 @@ const checkRecover = (now, stuck, expect) => {
   if (!call.lostAt) { call.lostAt = now; return }              // 壊れ始めた時刻を覚える
   if (now - call.lostAt < RECOVER_AFTER_MS) return             // まだ待つ（瞬断かもしれない）
   if (!autoLeft()) {                                           // 打ち止め。ここから先は人に委ねる
-    showPeerNotice('🔌 自動でつなぎ直しましたが直りませんでした。「つなぎ直す」を押すか、時間をおいて入り直してください')
+    showPeerNotice('🔌 つながりません。「つなぎ直す」を押すか、時間をおいて入り直してください')
     call.lostAt = now                                          // 通知を出し続けないよう数え直す
     return
   }
@@ -8001,11 +8000,11 @@ const entryRender = () => {
   if (entry.state === 'asleep') {
     const bc = !!(entry.pk || roomPk(entry.id))
     const noName = !!entry.id && !roomInput.value.trim()   // ハッシュだけの URL＝名前を持って来ていない
-    $('entryText').textContent = (bc
-      ? '😴 この配信はいま開いていないみたいです。始まればここに出ます。'
+    // 短く（v0.16.17）。「探すのに時間がかかっているだけ」の場合は「🚪 このまま入ってみる」のボタンが受け持つ
+    $('entryText').textContent = bc
+      ? '😴 この配信はいま開いていません。始まればここに出ます。'
       : noName ? '😴 この部屋は終わったみたいです。'
-      : '😴 この部屋にはいま誰もいないみたいです。古いリンクかもしれません。')
-      + (entry.id ? '（見つけるのに時間がかかっているだけのこともあります）' : '')
+      : '😴 いまは誰もいません。'
     $('entryOpen').hidden = bc   // 聞き役は配信部屋を開けない（鍵が無い）
   }
   syncKindRow()   // ボタンの文言
@@ -8237,7 +8236,8 @@ const renderLobby = () => {
     }
     const dur = document.createElement('div'); dur.className = 'room-dur'
     const durText = document.createElement('span')
-    durText.textContent = '⏱ ' + fmtDuration(roomSeconds(room, people))
+    // 常設の部屋（ボットが常駐）は経過時間の代わりに「常設」（PR #7 の案・v0.16.17）。名前ではなく部屋 ID で判定
+    durText.textContent = STANDING_ROOMS.has(room) ? '常設' : '⏱ ' + fmtDuration(roomSeconds(room, people))
     const eq = document.createElement('span'); eq.className = 'room-eq'
     eq.dataset.act = act                 // 活発さ(0〜3)をEQの高さの元にする。実音声ではなくランダム
     eq.textContent = lobbyEqFrame(act)   // 初期フレーム（次のtickまで空にならないように）
@@ -8269,7 +8269,13 @@ const renderLobby = () => {
       rp.append(im, n)
       ppl.append(rp)
     }
-    btn.append(top); if (sub) btn.append(sub); btn.append(dur, ppl)
+    btn.append(top); if (sub) btn.append(sub)
+    // やまびこ部屋だけ一言（PR #7 の案・v0.16.17）：ボットの部屋だと分かり、マイクの確認に使えると分かる
+    if (room === MOVED_ROOMS['やまびこ部屋⛰️（5秒で返信）']) {
+      const bot = document.createElement('div'); bot.className = 'room-bot'; bot.textContent = '🤖 ボットが 5 秒で返します。ひとりでマイクの確認ができます'
+      btn.append(bot)
+    }
+    btn.append(dur, ppl)
     btn.onclick = () => askRoom(room, lobbyName(room, people))
     list.append(btn)
     if (lobbyAsk && lobbyAsk.room === room) {   // タップした部屋の直下に2択
