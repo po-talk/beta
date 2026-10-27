@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.14
+  ぽっと通話〈実験版〉 v0.16.15
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1718,7 +1718,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.14'
+const APP_VERSION = 'v0.16.15'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -8055,6 +8055,81 @@ $('entryOpen').onclick = () => {
   entryCancel(); roomInput.focus(); roomInput.select()
 }
 
+// ─ 通話中の部屋の並び順（v0.16.15・利用者が決めた評価）─ それまでは部屋 ID の文字順＝利用者にはでたらめに見えた。
+// 点は「人数 1 人分＝1 点」の物差し。見る側の画面だけで計算する（在室の合図の中身は変えない＝CLI・常設ページは無関係）。
+//   人数：4 人までは 1 人 1 点、それより上は 1 人 0.5 点（大部屋が圧倒しない）
+//   賑やかさ：話している人（活発さ 1 以上）1 人につき 1.5 点＋平均の活発さ×0.5。どちらも 1 分の平均でならす
+//   伸び：直近 5 分で増えた人数 1 人につき 1 点（3 点まで）
+//   話題タグ：＋0.5 ／ 見ている人が 🌱 で、部屋に 🌱 の人がいる：＋1
+//   満員：−6 ／ 全員が黙っている：2 分を過ぎたら 1 分ごとに −1（−8 まで）／ 開いて 4 時間を過ぎたら 1 時間ごとに −1
+//   作りたて（開いて 3 分まで）：ほかの部屋の真ん中の点より下にはしない（人数 1・まだ静か、で沈ませない）
+// 並びの例外：自分のいる部屋は先頭。見ている人が 🌱 なら、ようこそ・やまびこ（MOVED_ROOMS）を、いちばん点の高い部屋のすぐ下へ。
+// 揺れ止め（活発さは 5 秒ごとに変わる）：並べ替えは 25 秒ごと。そのあいだに増えた部屋は点の位置に差し込み、消えた部屋は抜くだけ。
+//   確認の 2 択が出ている間と、一覧を触って 4 秒以内は動かさない。点の差が 0.75 以下の隣どうしは入れ替えない。
+const RANK_EVERY_MS = 25000, RANK_MARGIN = 0.75, RANK_TAU_MS = 60000, RANK_GROW_MS = 5 * 60000, RANK_TOUCH_MS = 4000
+const roomStat = new Map()   // 部屋 → { talkers, mean, at, heard, seen, hist: [[時刻, 人数], …] }
+let lobbyOrder = [], lobbyRankAt = 0, lobbyTouchAt = 0
+const roomFeat = (room, people, now, viewerSprout) => {
+  const n = people.length
+  const talkers = people.filter(p => (p.talk || 0) >= 1).length
+  const mean = people.reduce((a, p) => a + (p.talk || 0), 0) / Math.max(1, n)
+  let s = roomStat.get(room)
+  if (!s) roomStat.set(room, s = { talkers, mean, at: now, heard: 0, seen: now, hist: [] })
+  else {
+    const k = 1 - Math.exp(-Math.max(0, now - s.at) / RANK_TAU_MS)   // 時間で重みを決める（在室の合図が来る頻度に左右されない）
+    s.talkers += (talkers - s.talkers) * k; s.mean += (mean - s.mean) * k; s.at = now
+  }
+  if (talkers) s.heard = now
+  if (!s.hist.length || now - s.hist[s.hist.length - 1][0] >= 5000) s.hist.push([now, n])
+  while (s.hist.length > 1 && now - s.hist[0][0] > RANK_GROW_MS) s.hist.shift()
+  return {
+    n, talkers: s.talkers, mean: s.mean,
+    silentMs: now - (s.heard || s.seen),
+    grow: n - Math.min(...s.hist.map(h => h[1])),
+    tagged: people.some(p => p.tag),
+    sprout: viewerSprout && people.some(p => p.stage === '🌱'),
+    full: n >= roomCapOf(room),
+    ageSec: roomSeconds(room, people),
+  }
+}
+const lobbyScore = f => {
+  let s = Math.min(f.n, 4) + Math.max(0, f.n - 4) * 0.5
+  s += f.talkers * 1.5 + f.mean * 0.5
+  s += Math.min(3, Math.max(0, f.grow))
+  if (f.tagged) s += 0.5
+  if (f.sprout) s += 1
+  if (f.full) s -= 6
+  if (f.silentMs > 120000) s -= Math.min(8, (f.silentMs - 120000) / 60000)
+  if (f.ageSec > 4 * 3600) s -= (f.ageSec - 4 * 3600) / 3600
+  return s
+}
+// 並びの土台（例外を当てる前）。reorder が偽なら、前の並びを保って出し入れだけする
+const lobbyRankBase = (prev, score, reorder) => {
+  const order = prev.filter(r => r in score)
+  Object.keys(score).filter(r => !order.includes(r)).sort((a, b) => score[b] - score[a]).forEach(r => {
+    const i = order.findIndex(x => score[x] < score[r])
+    if (i < 0) order.push(r); else order.splice(i, 0, r)
+  })
+  if (reorder) {
+    for (let moved = true, pass = 0; moved && pass <= order.length; pass++) {
+      moved = false
+      for (let i = 0; i + 1 < order.length; i++) {
+        if (score[order[i + 1]] - score[order[i]] > RANK_MARGIN) { [order[i], order[i + 1]] = [order[i + 1], order[i]]; moved = true }
+      }
+    }
+  }
+  return order
+}
+const lobbyRankApply = (base, own, boost) => {
+  const pin = own && base.includes(own) ? [own] : []
+  const b = boost.filter(r => base.includes(r) && r !== own)
+  const rest = base.filter(r => r !== own && !b.includes(r))
+  return [...pin, ...rest.slice(0, 1), ...b, ...rest.slice(1)]
+}
+window.__potLobbyRank = { score: lobbyScore, base: lobbyRankBase, apply: lobbyRankApply }   // テスト用（T86）
+const lobbyTouched = () => { lobbyTouchAt = Date.now() }
+;['pointerdown', 'touchstart', 'wheel', 'scroll'].forEach(ev => $('lobbyList').addEventListener(ev, lobbyTouched, { passive: true }))
+
 const renderLobby = () => {
   const list = $('lobbyList'), status = $('lobbyStatus')
   if (!lobbyRoom) return  // 接続前は初期メッセージのまま
@@ -8073,7 +8148,18 @@ const renderLobby = () => {
   //   （配信者が去った部屋は下の「配信の終わり」で片づく）。告知そのものは全員が送る＝人数は出る
   byRoom.forEach((people, room) => { if (isBcRoom(room) && !people.some(p => p.bo)) byRoom.delete(room) })
   list.replaceChildren()
-  const names = [...byRoom.keys()].sort()
+  // 並び順（上の「通話中の部屋の並び順」）。消えた部屋の記録は捨てる
+  const now = Date.now(), viewerSprout = stageOf() === '🌱'
+  roomStat.forEach((_, r) => { if (!byRoom.has(r)) roomStat.delete(r) })
+  const feats = new Map([...byRoom].map(([r, people]) => [r, roomFeat(r, people, now, viewerSprout)]))
+  const score = {}
+  feats.forEach((f, r) => { score[r] = lobbyScore(f) })
+  const vals = Object.values(score).sort((a, b) => a - b), mid = vals.length ? vals[Math.floor(vals.length / 2)] : 0
+  feats.forEach((f, r) => { if (f.ageSec < 180) score[r] = Math.max(score[r], mid) })
+  const reorder = !lobbyAsk && now - lobbyTouchAt >= RANK_TOUCH_MS && now - lobbyRankAt >= RANK_EVERY_MS
+  if (reorder) lobbyRankAt = now
+  lobbyOrder = lobbyRankBase(lobbyOrder, score, reorder)
+  const names = lobbyRankApply(lobbyOrder, call.joinedId, viewerSprout ? Object.values(MOVED_ROOMS) : [])
   // ロビーに入った直後はまだ誰も見つけていないだけなので「ありません」と断定しない。
   // 相手の発見（Nostrでの合流＋WebRTCの確立）に数秒かかるため、その間は探索中と出す。
   status.textContent = names.length ? ''
