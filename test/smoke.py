@@ -1200,7 +1200,6 @@ def T55b(r, a, b):
     met = c.wait_for('%s >= 2' % MEMBERS, timeout=DISCOVER)
     vrow = c.wait_for("!!document.querySelector('#members .member.virtual')", timeout=DISCOVER)
     two = c.wait_for("%s >= 2" % AUDIOS, timeout=DISCOVER)
-    sent = a.wait_for("document.getElementById('sndTtsSent').textContent.startsWith('届いている人：2 / 2')", timeout=SHORT)
     # 配信者が「つなぎ直す」（ページ再読み込み）→ 読み上げのオンが引き継がれ、聞き役 c には新しい配信者から届き直す（v0.14.54）
     # ★テストの都合：c を聞き役にするため鍵置き場を空にしたので、a の再読み込みの前に a の鍵を書き戻す（T27b と同じ）。
     #   戻ったら再び空にする（後の T27b で b が再読み込みしたときにオーナーにならないように）
@@ -1241,11 +1240,11 @@ def T55b(r, a, b):
     a.eval("document.getElementById('sndTts').click()")   # 後のテストに持ち越さない
     show_tab(a, 'members')
     click_leave(c)
-    ok = (on and met and vrow and two and sent and back and kept and vrow2 and lazy0
+    ok = (on and met and vrow and two and back and kept and vrow2 and lazy0
           and err_ja and err_raw_hidden and oom_counted)
     r.check('T55b', '読み上げ v2：後から入った聞き役にも届く・配信者がつなぎ直しても読み上げは続く', ok, 'pass',
-            'オン=%s / 合流=%s / 仮想行=%s / 音声2本=%s / 配信者に「届いている人：2 / 2」=%s / つなぎ直し後に戻った=%s / チェック維持=%s / 聞き役に仮想行が戻る=%s / つなぎ直しでは読み込まない=%s / 失敗は日本語＋直し方=%s / 生英語を出さない=%s / oom記録=%s'
-            % (on, met, vrow, two, sent, back, kept, vrow2, lazy0, err_ja, err_raw_hidden, oom_counted))
+            'オン=%s / 合流=%s / 仮想行=%s / 音声2本=%s / つなぎ直し後に戻った=%s / チェック維持=%s / 聞き役に仮想行が戻る=%s / つなぎ直しでは読み込まない=%s / 失敗は日本語＋直し方=%s / 生英語を出さない=%s / oom記録=%s'
+            % (on, met, vrow, two, back, kept, vrow2, lazy0, err_ja, err_raw_hidden, oom_counted))
 
 
 def T57(r, a, b):

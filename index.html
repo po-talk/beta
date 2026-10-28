@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.19
+  ぽっと通話〈実験版〉 v0.16.20
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1287,7 +1287,6 @@
            メンバーに 🙋 で並ぶ。配信者は従来どおり 🎙 で許可する（許可後は本人が「マイクを使う」でミュート解除）。 -->
       <label class="snd-opt" id="reqOpenRow" hidden><input type="checkbox" id="reqOpen"> 🙋 通話希望者募集（聞いている人が「通話希望」を出せます）</label>
       <p class="vol-note" id="sndTtsProg" hidden></p>
-      <p class="vol-note" id="sndTtsSent" hidden></p>
       <p class="vol-note" id="sndTtsCrash" hidden></p>
     </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
@@ -1712,7 +1711,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.19'
+const APP_VERSION = 'v0.16.20'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3986,7 +3985,6 @@ const renderMembers = () => {
   })
   // 読み上げの仮想メンバー 🗣「つくよみちゃん」（v0.14.44）。人ではないので人数に数えず、名簿の印も付けない。
   // 配信者の行の直下。音は 'tts' の <audio>（受け取る側）か自分の合成（配信者）で、跳ねは解析器（vadTick）が描く
-  renderTtsSent()
   if (ttsVisible()) {
     const v = memberRow('🗣', 'つくよみちゃん', false, false, '', undefined, null, call.bcast ? { mark: '' } : null)
     v.classList.add('virtual'); v.title = '読み上げ（配信者の端末で合成）。声と顔：フリー素材キャラクター「つくよみちゃん」'
@@ -5438,7 +5436,7 @@ const syncTtsRow = () => {
   $('reqOpenRow').hidden = !own
   if (!own && call.reqOpen) { call.reqOpen = false; call.requests.clear() }
   $('reqOpen').checked = call.reqOpen
-  renderTtsProg(); renderTtsSent()
+  renderTtsProg()
 }
 // 配信者：いまの募集状態を配る（target 省略＝全員・grantAction はオーナー検証済みの経路）。
 const sendReqOpen = target => { if (call.ownerKey && call.grantAction) sendTo(call.grantAction, { k: 'reqopen', on: !!call.reqOpen }, target) }
@@ -5468,14 +5466,6 @@ const sendEnterNotice = () => {
   const box = $('sndTtsNoName')
   box.checked = ttsNoName
   box.onchange = () => { ttsNoName = box.checked; lsSet(TTS_NONAME_KEY, ttsNoName ? '1' : '0') }
-}
-// 配信者に「誰に届いているか」を見せる。古い版のクライアントは受け取れない（返事が無い＝送らない）ので、ここで気づける
-const renderTtsSent = () => {
-  const el = $('sndTtsSent')
-  el.hidden = !(ttsAllowed() && sndTts && ttsDest)
-  if (el.hidden) return
-  const n = [...call.peers].filter(id => call.ttsSent.has(id)).length
-  el.textContent = '届いている人：' + n + ' / ' + call.peers.size + ' 人' + (n < call.peers.size ? '（古いバージョンのページを開いている人には届きません。ページを開き直してもらってください）' : '')
 }
 // 読み込み → 見本を 1 回読む（準備ができたことが耳で分かる）。トグル ON と、保存オンでの入室（warm）の両方から
 const ttsStart = (sample = true) => loadTts().then(() => {
@@ -7007,7 +6997,6 @@ const wireRoom = () => {
       if (call.ttsSent.has(peerId)) { ttsResend(peerId); return }
       call.ttsSent.add(peerId); call.ttsSentStream.set(peerId, ttsDest.stream)
       try { call.room.addStream(ttsDest.stream, { target: peerId }) } catch {}
-      renderTtsSent()
       return
     }
     if ('now' in d) {  // 読んでいる人の行を光らせる（配信者からだけ）。連打よけはここだけ
