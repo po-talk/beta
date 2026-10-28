@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.21
+  ぽっと通話〈実験版〉 v0.16.22
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1711,7 +1711,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.21'
+const APP_VERSION = 'v0.16.22'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -5005,7 +5005,7 @@ const notifyRooms = fresh => {   // fresh: [{room, people}]（新しく現れた
     n.onclick = () => { try { window.focus() } catch {} ; n.close(); const l = document.querySelector('.lobby'); if (l) l.scrollIntoView({ block: 'start' }) }
   } catch { ntfRoom = false; $('ntfRoomOpt').hidden = true }   // 対応していない環境（UA 判定の漏れ）は黙って畳む
 }
-// タブの題名とアイコン：通話中の部屋があれば「● N部屋で通話中」、見ていない間に新しい部屋ができたら「🔔」。
+// タブの題名とアイコン：通話中の部屋があれば「● N部屋で通話中」（入室中は「● ほかN部屋で通話中」）、見ていない間に新しい部屋ができたら「🔔」。
 // 数えるのは自分以外の部屋（自分ひとりの部屋で印が付いても「誰かいる」の意味にならない）
 const BASE_TITLE = document.title
 const favLinks = [...document.querySelectorAll('link[rel="icon"]')].map(l => ({ l, href: l.getAttribute('href'), type: l.getAttribute('type') }))
@@ -5033,7 +5033,8 @@ const setFav = on => {
   img.src = 'images/icon.svg'
 }
 const renderTabMark = () => {
-  document.title = (tabFresh ? '🔔 新しい部屋｜' : tabRooms ? '● ' + tabRooms + '部屋で通話中｜' : '') + BASE_TITLE
+  // 入室中は自分の部屋を数えていないので「ほか N 部屋」と言う（Issue #9：入室中に実際より 1 つ少なく見える）
+  document.title = (tabFresh ? '🔔 新しい部屋｜' : tabRooms ? '● ' + (call.joinedId ? 'ほか' : '') + tabRooms + '部屋で通話中｜' : '') + BASE_TITLE
   setFav(tabRooms > 0)
 }
 const clearTabFresh = () => { if (tabFresh && !ntfAway()) { tabFresh = false; renderTabMark() } }
