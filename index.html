@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.18
+  ぽっと通話〈実験版〉 v0.16.19
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1285,7 +1285,7 @@
       <label class="snd-opt" id="sndTtsNameRow" hidden><input type="checkbox" id="sndTtsNoName"> 🙊 投稿した人の名前は読まない</label>
       <!-- 通話希望者募集（v0.15.9・配信者だけ）：オンにすると聞き役に「通話希望」ボタンが出て、希望した人が
            メンバーに 🙋 で並ぶ。配信者は従来どおり 🎙 で許可する（許可後は本人が「マイクを使う」でミュート解除）。 -->
-      <label class="snd-opt" id="reqOpenRow" hidden><input type="checkbox" id="reqOpen"> 🙋 通話希望者募集（聞き役が「通話希望」を出せます）</label>
+      <label class="snd-opt" id="reqOpenRow" hidden><input type="checkbox" id="reqOpen"> 🙋 通話希望者募集（聞いている人が「通話希望」を出せます）</label>
       <p class="vol-note" id="sndTtsProg" hidden></p>
       <p class="vol-note" id="sndTtsSent" hidden></p>
       <p class="vol-note" id="sndTtsCrash" hidden></p>
@@ -1712,7 +1712,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.18'
+const APP_VERSION = 'v0.16.19'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2269,7 +2269,7 @@ const syncKindRow = () => {
   $('joinLbl').textContent = entry.state === 'checking'
     ? 'この部屋を探しています…'
     : foreign
-      ? '聞き役として参加する'
+      ? 'リスナーとして参加する'
       : ownBc
         ? '配信を始める'
         : isCreate
@@ -6710,7 +6710,7 @@ const renderMail = () => {
   }
   if (call.ownerKey) {                       // ── 枠主 ──
     if (!call.mailOpen) {
-      head.append(line('お題を出して、聞き役からお便りを募集できます。'))
+      head.append(line('お題を出して、聞いている人からお便りを募集できます。'))
       body.append(line('例：「最近食べて美味しかったもの」。集まったお便りはあなたにだけ並び、選んだものだけが部屋に出ます。', 'mail-empty'))
       mailForm.hidden = false
       mailText.maxLength = MAIL_TITLE_MAX
@@ -7506,7 +7506,7 @@ const runJoin = async () => {
     } catch {
       call.ownerKey = null; call.ownerPub = ''
       if (call.stream) { call.stream.getTracks().forEach(t => t.stop()); call.stream = null }   // 誰にも届かないマイクは掴まない
-      showPeerNotice('📣 配信者の鍵を読めませんでした。この部屋では聞き役になります')
+      showPeerNotice('📣 配信者の鍵を読めませんでした。この部屋ではリスナーとして入ります')
     }
   }
 
@@ -8338,7 +8338,7 @@ const roomHow = room => {
   // 配信部屋の聞き役として入るなら、そもそもマイクを使わない。「ミュートで入る」と書くと
   // 「あとで解除すれば話せる」と読まれてしまうので、起きることをそのまま書く。
   const listen = isBcRoom(room) && !ownerKeyByFp(roomPk(room))
-  return listen ? '聞き役で入室します（マイクは使いません）' : 'ミュート状態で入室します'
+  return listen ? 'リスナーとして入室します（マイクは使いません）' : 'ミュート状態で入室します'
 }
 const selectRoom = (room, name) => {
   if (room === call.joinedId) return
