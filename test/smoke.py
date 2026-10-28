@@ -2076,7 +2076,10 @@ def T71b(r, room):
     c.eval("Object.defineProperty(document, 'hidden', { get: () => false, configurable: true }); document.hasFocus = () => true; dispatchEvent(new Event('focus'))")
     n_rooms = lambda t: int(re.match(r'● (\d+)部屋で通話中｜', t).group(1)) if re.match(r'● (\d+)部屋で通話中｜', t) else 0
     counted = n_rooms(c.eval("document.title")) == n_rooms(base) + 1   # ほかのテストの部屋が残っていても増分で見る
-    ok = bool(listed and bot_quiet and got and name in ntf and counted)
+    # 入室中の h の題名：数が出るなら「ほか」付き（自分の部屋を数えていないため・Issue #9）
+    ht = h.eval("document.title")
+    joined_title = (not ht.startswith('● ')) or ht.startswith('● ほか')
+    ok = bool(listed and bot_quiet and got and name in ntf and counted and joined_title)
     r.check('T71b', '新しい部屋の知らせ：常設の部屋はボットだけなら数えず知らせない・人が入ったら 1 回知らせて数える', ok, 'pass',
             '一覧に出た=%s ボットだけは静か=%s 人が入って通知=%s(%s) 数えた=%s' % (bool(listed), bot_quiet, bool(got), ntf, counted))
     click_leave(h); click_leave(b)
