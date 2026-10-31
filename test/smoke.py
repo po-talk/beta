@@ -867,7 +867,7 @@ def T44(r):
     owner_hidden = t1.eval(row); owner_bc = t1.eval("document.getElementById('kindBc').checked")
     owner_lbl = t1.eval(lbl)
     # ② リスナー（鍵を消す＝別の端末）
-    t1.eval("localStorage.removeItem('pot-call-bcast')")
+    t1.eval("window.__potBcErase(true)")
     t2 = r.open_tab(hash_=hash_)
     # リンクで来たので入口の確認が入る。開いている部屋なので、確認が終わればボタンが押せる状態に戻る
     entry_live = t2.wait_for("!document.getElementById('join').disabled && !document.getElementById('join').hidden", timeout=DISCOVER)
@@ -1195,7 +1195,7 @@ def T55b(r, a, b):
     a.eval("document.getElementById('sndTts').click()")   # T55 の最後でオフにしてあるので、もう一度オン
     on = a.wait_for("document.getElementById('sndTts').checked", timeout=SHORT)
     c = r.open_tab(hash_=a.eval('location.hash'))
-    c.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役にする（T27 と同じ理由）
+    c.eval("window.__potBcErase(true)")   # 聞き役にする（T27 と同じ理由）
     click_join(c)
     met = c.wait_for('%s >= 2' % MEMBERS, timeout=DISCOVER)
     vrow = c.wait_for("!!document.querySelector('#members .member.virtual')", timeout=DISCOVER)
@@ -1203,11 +1203,11 @@ def T55b(r, a, b):
     # 配信者が「つなぎ直す」（ページ再読み込み）→ 読み上げのオンが引き継がれ、聞き役 c には新しい配信者から届き直す（v0.14.54）
     # ★テストの都合：c を聞き役にするため鍵置き場を空にしたので、a の再読み込みの前に a の鍵を書き戻す（T27b と同じ）。
     #   戻ったら再び空にする（後の T27b で b が再読み込みしたときにオーナーにならないように）
-    a.eval("if (window.__a_bcast_key) localStorage.setItem('pot-call-bcast', window.__a_bcast_key)")
+    a.eval("if (window.__a_bcast_key) window.__potBcRestore()")
     a.eval("document.getElementById('retry').click()", await_promise=False)
     time.sleep(3)
     back = a.wait_for('%s >= 2' % MEMBERS, timeout=DISCOVER)
-    a.eval("window.__a_bcast_key = localStorage.getItem('pot-call-bcast'); localStorage.removeItem('pot-call-bcast')")
+    a.eval("window.__a_bcast_key = window.__potBcList().length ? '1' : null; window.__potBcErase(true)")
     kept = a.wait_for("document.getElementById('sndTts').checked && !document.getElementById('sndTtsRow').hidden", timeout=SHORT)
     c.eval("document.querySelectorAll('#members .member.virtual').length")   # 古い行は配信者が抜けた時点で消えている
     vrow2 = c.wait_for("!!document.querySelector('#members .member.virtual')", timeout=DISCOVER)
@@ -1293,8 +1293,9 @@ def T51(r, room):
     h = '#' + o.eval("document.getElementById('share').href").split('#', 1)[1]
     click_join(o)
     assert o.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), '配信者が参加できない'
-    keys = o.eval("localStorage.getItem('pot-call-bcast')")   # 戻るときに使う（同じブラウザなので一時的に消す）
-    o.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役は鍵を持たない
+    # ★v0.16.23：鍵は IndexedDB（pot-call-keys）に引っ越したので、退避は下の __potBcErase(true) が担う
+    # （同じブラウザで「抜けたら戻る」を再現するため、いったん stash へ逃がして元に戻す）
+    o.eval("window.__potBcErase(true)")   # 聞き役は鍵を持たない
     l = r.open_tab(hash_=h)
     click_join(l)
     assert l.wait_for("%s === 2" % MEMBERS, timeout=DISCOVER), '聞き役が合流できない'
@@ -1305,10 +1306,12 @@ def T51(r, room):
     waiting = l.wait_for("%s.includes('戻るのを待っています')" % BC_NOTE, timeout=SHORT)
     gone = c.wait_for("!%s.includes(%s)" % (LOBBY, js_str(room + 'END')), timeout=DISCOVER)
     # ③ 戻る（同じ鍵で、同じリンクから開き直す＝実機で配信者が入り直すのと同じ）
-    o.eval("localStorage.setItem('pot-call-bcast', %s)" % js_str(keys))
+    o.eval("window.__potBcRestore()")
     o.eval("location.hash = %s" % js_str(h[1:]), await_promise=False)
     o.call('Page.reload'); time.sleep(0.5); o.wait_for(BOOTED, timeout=SHORT)
     click_join(o)
+    # ★v0.16.23：同じタブの同じ鍵で戻ったことを先に待つ（聞いている側の見立てを先に数えない）
+    back = o.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
     resumed = l.wait_for("!%s.includes('戻るのを待っています') && %s.includes('配信者の声')" % (BC_NOTE, BC_NOTE), timeout=DISCOVER)
     # ④ 二度目：戻らない → 60 秒で「終了」→ 15 秒で退出
     click_leave(o)
@@ -1316,10 +1319,10 @@ def T51(r, room):
     ended = l.wait_for("%s.includes('配信が終了しました')" % BC_NOTE, timeout=75)
     left = l.wait_for("document.getElementById('tabs').hidden", timeout=25)
     told = l.eval(STATE)
-    ok = listed and waiting and gone and resumed and ended and left and '配信は終了' in told
+    ok = listed and waiting and gone and back and resumed and ended and left and '配信は終了' in told
     r.check('T51', '配信者が切れたら待ち、戻らなければ配信終了でロビーへ', ok, 'pass',
             'ロビーに出る=%s / 抜けたら待つ=%s / ロビーから消える=%s / 戻れば続く=%s / 60秒で終了=%s / 自動退出=%s / 案内=%r'
-            % (listed, waiting, gone, resumed, ended, left, told[:30]))
+            % (listed, waiting, gone, back and resumed, ended, left, told[:30]))
 
 
 def T52(r, room):
@@ -1666,8 +1669,8 @@ def T27(r, room):
     #   2枚目のタブも配信者の鍵を見つけて「自分もオーナー」になってしまう（実機では別端末なので
     #   起きない）。聞き役を作るために鍵置き場だけ空にする。A は参加時に鍵を読み込み済みなので
     #   影響を受けない（A がつなぎ直すテストの前には A の鍵を書き戻す）。
-    a.eval("window.__a_bcast_key = localStorage.getItem('pot-call-bcast')")
-    b.eval("localStorage.removeItem('pot-call-bcast')")
+    a.eval("window.__a_bcast_key = window.__potBcList().length ? '1' : null")
+    b.eval("window.__potBcErase(true)")
     click_join(b)
     # ★③（v0.15.10）：配信者 a は普通の聞き役を見ない＝自分だけ（1）。聞き役 b は配信者が見える＝2。
     met = a.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
@@ -1758,7 +1761,7 @@ def T27b(r, a, b):
             % (pre_tok, rejoined, resumed_speak, spoke_again))
 
     # 配信者がつなぎ直した場合（v0.14.26）：リスナー b のマイク権限が維持され、配信者 a が復帰後も声が届く
-    a.eval("if (window.__a_bcast_key) localStorage.setItem('pot-call-bcast', window.__a_bcast_key)")
+    a.eval("if (window.__a_bcast_key) window.__potBcRestore()")
     a.eval("document.getElementById('retry').click()")
     # 配信者のリロード完了と自動再参加を待つ
     a_rejoined = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
@@ -1773,13 +1776,13 @@ def T27b(r, a, b):
 
     # 登壇耐性強化（v0.14.27）：リスナーが再接続（retry）した後に、配信者もつなぎ直した場合でも登壇権限が復元される
     # リスナー b が「つなぎ直す」でリロード（同一ブラウザなので b のリロード直前に a の鍵を退避して消す）
-    a_key = a.eval("localStorage.getItem('pot-call-bcast')")
-    b.eval("localStorage.removeItem('pot-call-bcast')")
+    a_key = a.eval("window.__potBcList().length ? '1' : null")
+    b.eval("window.__potBcErase(true)")
     b.eval("document.getElementById('retry').click()")
     b_joined = b.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
     # その直後に配信者 a もつなぎ直す（配信者の peerId が変わり ownerChanged が発生）
     if a_key:
-        a.eval("localStorage.setItem('pot-call-bcast', %s)" % js_str(a_key))
+        a.eval("window.__potBcRestore()")
     a.eval("document.getElementById('retry').click()")
     a_rejoined_again = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
     # 新しい配信者に対してもリスナー b がトークンを提示し、登壇権限が維持されること
@@ -1827,7 +1830,7 @@ def T31(r, room):
     h = a.eval('location.hash')
     b, c = r.open_tab(hash_=h), r.open_tab(hash_=h)     # 聞き役2人（片方は「漏れていないか」の見張り）
     for t in (b, c):
-        t.eval("localStorage.removeItem('pot-call-bcast')")   # ★同じブラウザなので鍵を消して聞き役にする
+        t.eval("window.__potBcErase(true)")   # ★同じブラウザなので鍵を消して聞き役にする
         click_join(t)
     # ★③（v0.15.10）：配信者 a は普通の聞き役を見ない（自分だけ＝1）。3 人そろった合図は聞き役側（自分＋配信者＝2）と、
     #   配信者側の「🙂 ほか 2 人が聞いています」で見る。
@@ -1904,7 +1907,7 @@ def T31(r, room):
     #   先に着いた分は「枠主が出したものか」を判定できず捨てられる。順番に依存しない形
     #   （枠主が分かった瞬間に自分から取りに行く）になっているかを見る。2026-08-17 に実際に落ちた経路。
     d = r.open_tab(hash_=h)
-    d.eval("localStorage.removeItem('pot-call-bcast')")
+    d.eval("window.__potBcErase(true)")
     click_join(d)
     late_title = d.wait_for("document.getElementById('mailHead').textContent.includes('最近食べて美味しかったもの')",
                             timeout=DISCOVER)
@@ -1935,7 +1938,7 @@ def T32(r, room):
     h = a.eval('location.hash')
     time.sleep(8)   # ★枠主が一人でしばらく居る状態を作る（名簿は既に配り終えている）
     b = r.open_tab(hash_=h)
-    b.eval("localStorage.removeItem('pot-call-bcast')")
+    b.eval("window.__potBcErase(true)")
     click_join(b)
     met = b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
     heard = b.wait_for('%s === 1' % AUDIOS, timeout=DISCOVER)
@@ -1963,7 +1966,7 @@ def T27h(r, room):
         r.check('T27h', '通話希望者募集：希望→許可', False, 'pass', '配信部屋を作れなかった')
         return
     l = r.open_tab(hash_=o.eval('location.hash'))
-    l.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役（鍵を持たない）
+    l.eval("window.__potBcErase(true)")   # 聞き役（鍵を持たない）
     click_join(l)
     # ★③（v0.15.10）：募集オフ・挙手前は、配信者は普通の聞き役を見ない＝自分だけ（1）。聞き役は配信者（声を出せる人）が見える＝2。
     met = o.wait_for('%s === 1' % MEMBERS, timeout=DISCOVER) and l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
@@ -2006,7 +2009,7 @@ def T63(r, room):
     o.wait_for("!document.getElementById('reqOpenRow').hidden", timeout=SHORT)
     o.eval("document.getElementById('reqOpen').click()")
     l = r.open_tab(hash_=o.eval('location.hash'))
-    l.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役（鍵を持たない）
+    l.eval("window.__potBcErase(true)")   # 聞き役（鍵を持たない）
     click_join(l)
     met = l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
     raise_shown = l.wait_for("!document.getElementById('raise').hidden", timeout=15)   # 配り直し（30 秒）より前に出ること
@@ -2335,18 +2338,19 @@ def T75(r, room):
     a.call('Page.bringToFront')   # 裏のタブには入力イベントが届かない（描画待ちで止まる）
     a.call('Emulation.setDeviceMetricsOverride', width=390, height=844, deviceScaleFactor=2, mobile=True)
     a.call('Emulation.setTouchEmulationEnabled', enabled=True, maxTouchPoints=5)
-    a.eval("document.querySelector('#chatLog .cl-row.can').scrollIntoView({block: 'center'})")
+    a.eval("document.querySelector('#chatLog .cl-row.can')?.scrollIntoView({block: 'center'})")
     time.sleep(0.5)
-    pt = a.eval("(() => { const r = document.querySelector('#chatLog .cl-row.can .cl-text').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] })()")
+    pt = a.eval("(() => { const e = document.querySelector('#chatLog .cl-row.can .cl-text'); if (!e) return null; const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] })()")
     for t in ('touchStart', 'touchEnd'):
-        a.call('Input.dispatchTouchEvent', type=t, touchPoints=([{'x': pt[0], 'y': pt[1]}] if t == 'touchStart' else []))
+        if pt is not None:
+            a.call('Input.dispatchTouchEvent', type=t, touchPoints=([{'x': pt[0], 'y': pt[1]}] if t == 'touchStart' else []))
     time.sleep(0.5)
     size = a.eval("""(() => { const b = document.querySelector('#chatLog .cl-row.pick .cl-ig'); if (!b) return 'no-button';
         const st = getComputedStyle(b), sv = b.querySelector('svg'); if (!sv) return 'no-svg';
         const r = sv.getBoundingClientRect(); return st.display + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) })()""")
     shown = isinstance(size, str) and not size.startswith('none') and size.endswith('14x14')
     picked = a.eval("!!document.querySelector('#chatLog .cl-row.pick')")
-    a.eval("document.querySelector('#chatLog .cl-row.can .cl-who').click()")
+    a.eval("document.querySelector('#chatLog .cl-row.can .cl-who')?.click()")
     card = a.wait_for("document.getElementById('cardDlg') && document.getElementById('cardDlg').open", timeout=SHORT) if picked else False
     a.eval("document.querySelectorAll('dialog[open]').forEach(d => d.close())")
     ok = bool(joined and arrived and picked and shown and card)
@@ -2722,6 +2726,38 @@ def T84(r, room):
         click_leave(t)
 
 
+def T87(r):
+    """配信鍵の引っ越し（v0.16.23・監査 S1）：v0.16.22 までの localStorage の鍵（JWK）が、起動時に
+    取り出せない鍵として IndexedDB へ移り、localStorage から消える。**指紋は変わらない**＝前に配った
+    配信リンクで、今まで通り配信者として入れる（同じ部屋名で作り直しても同じリンクになる）。
+    """
+    a = r.open_tab()
+    a.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    a.eval("window.__potBcErase()")
+    # 旧版と同じ作り方で鍵を置く（取り出せる鍵・JWK・raw の公開鍵・指紋＝SHA-256 の先頭 16 バイト）
+    fp = a.eval(r"""(async () => {
+      const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+      const jwk = await crypto.subtle.exportKey('jwk', kp.privateKey)
+      const raw = await crypto.subtle.exportKey('raw', kp.publicKey)
+      const pub = b64u(raw), fp = b64u((await crypto.subtle.digest('SHA-256', raw)).slice(0, 16))
+      localStorage.setItem('pot-call-bcast', JSON.stringify({ [fp]: { name: '引っ越しテスト', jwk, pub, at: Date.now() } }))
+      return fp
+    })()""")
+    a.call('Page.reload'); time.sleep(0.5)
+    booted = a.wait_for(BOOTED, timeout=SHORT)
+    listed = a.wait_for("window.__potBcList().some(k => k.fp === %s && k.name === '引っ越しテスト')" % js_str(fp), timeout=SHORT)
+    ls_gone = a.eval("localStorage.getItem('pot-call-bcast') === null")
+    # 同じ名前で配信部屋を選ぶと、同じ指紋のリンクになる（新しい鍵を作らない）
+    a.eval("(() => { document.getElementById('createBox').open = true; const i = document.getElementById('room');"
+           " i.value = '引っ越しテスト'; i.dispatchEvent(new Event('input')); document.getElementById('kindBc').click() })()")
+    same = a.wait_for("document.getElementById('share').href.includes('~pk~' + %s)" % js_str(fp), timeout=SHORT)
+    a.eval("window.__potBcErase()")
+    ok = booted and listed and ls_gone and same
+    r.check('T87', '配信鍵の引っ越し：localStorage の旧い鍵が IndexedDB へ移り、指紋（配信リンク）は変わらない', ok, 'pass',
+            '起動=%s / 移った=%s / 旧い置き場から消えた=%s / 同じリンク=%s' % (booted, listed, ls_gone, same))
+
+
 def T86(r, room):
     """通話中の部屋の並び順（v0.16.15）：評価の関数と、自分の部屋が先頭に固定されること
 
@@ -3038,7 +3074,7 @@ def T27g(r, room):
         return
     h = o.eval('location.hash')
     l = r.open_tab(hash_=h)
-    l.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役（鍵を持たない）
+    l.eval("window.__potBcErase(true)")   # 聞き役（鍵を持たない）
     click_join(l)
     # ★③（v0.15.10）：配信者は普通の聞き役を見ない。聞き役が入った合図は「🙂 ほか 1 人が聞いています」の出現で見る
     #   （l 側は配信者が見えて 2 人）。配信者の MEMBERS は自分だけ＝1 のままなので、それを合図には使えない。
@@ -3073,7 +3109,7 @@ def T27j(r, room):
     h = o.eval('location.hash')
     # リスナー l は最初から「軽快な音楽」を選んでおく → 配信部屋では配信者（焚き火）に切り替わる
     l = r.open_tab(hash_=h)
-    l.eval("localStorage.setItem('pot-call-bgm','tune'); localStorage.removeItem('pot-call-bcast')")
+    l.eval("localStorage.setItem('pot-call-bgm','tune'); window.__potBcErase(true)")
     click_join(l)
     l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
     adopted = l.wait_for("document.getElementById('bgmFire').checked", timeout=DISCOVER + 5)   # 配信者の焚き火をもらう
@@ -3100,7 +3136,7 @@ def T27i(r, room):
     h = o.eval('location.hash')
     # 聞き役 l が入る → o のひとことに「…さんが入室しました」（システム行）
     l = r.open_tab(hash_=h)
-    l.eval("localStorage.removeItem('pot-call-bcast')")
+    l.eval("window.__potBcErase(true)")
     lname = l.eval("(JSON.parse(localStorage.getItem('pot-call-profile')||'{}').name)||''")
     click_join(l)
     notice = o.wait_for("[...document.querySelectorAll('#chatLog .cl-sys .cl-text')]"
@@ -3217,11 +3253,13 @@ def T62(r, room):
     h = o.eval('location.hash')
     l, x = r.open_tab(hash_=h), r.open_tab(hash_=h)
     for t in (l, x):
-        t.eval("localStorage.removeItem('pot-call-bcast'); localStorage.setItem('pot-call-ignore-seen','1')")
+        t.eval("window.__potBcErase(true); localStorage.setItem('pot-call-ignore-seen','1')")
         click_join(t)
     met = l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and x.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+    # ★つくよみのエンジン読み込み（同梱 JS＋固定 URL の wasm＋モデルで 100MB 超）は回線により 1 分近くかかる。
+    #   v0.16.11・vendored 化で 30 秒窓では CDN の揺れで取り逃す（解錠の順番は入口確認があるためここが安全）
     show_tab(o, 'settings'); o.eval("document.getElementById('sndTts').click()")
-    tts_l = l.wait_for("%s >= 2" % AUDIOS, timeout=SHORT + 15)   # 配信者の声＋つくよみ
+    tts_l = l.wait_for("%s >= 2" % AUDIOS, timeout=DISCOVER + 60)   # 配信者の声＋つくよみ
     # l の端末で「つくよみの（どれかの）トラックが切られた瞬間があったか」を 50ms ごとに記録する
     l.eval("window.__gateOff = 0; setInterval(() => { if ([...document.querySelectorAll('audio:not(#appAudio)')].some(a => a.srcObject && a.srcObject.getAudioTracks().some(t => !t.enabled))) window.__gateOff++ }, 50)")
     say = lambda t, m: (time.sleep(1.7), t.eval("(() => { const i = document.getElementById('chatText'); i.value = %s; document.getElementById('chatSend').click() })()" % js_str(m)))[1]
@@ -3274,7 +3312,7 @@ def T28(r, room):
     click_join(o)
     assert o.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), '配信者が参加できない'
     # 聞き役は別の端末＝鍵を持たない（localStorage は同じブラウザの全タブで共有されるので消す。配信者は参加済み）
-    o.eval("localStorage.removeItem('pot-call-bcast')")
+    o.eval("window.__potBcErase(true)")
     a, b = r.open_tab(hash_=h), r.open_tab(hash_=h)
     # 他人の配信部屋のリンクを開いている間は「📣 配信部屋／🏠 雑談部屋」の2択を出さない
     # （部屋の正体はURLで決まっているので、ここで切り替えられると誤解のもとになる）。
@@ -3958,6 +3996,8 @@ def main():
             T84(r, room)
         if run('T85'):
             T85(r, room)
+        if run('T87'):
+            T87(r)
         if run('T86'):
             T86(r, room)
         if run('T27i'):
