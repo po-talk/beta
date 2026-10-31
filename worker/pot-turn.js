@@ -15,6 +15,9 @@
 //   Cloudflare Workers に配置。シークレットは環境変数で渡す（コードには書かない）。
 //     TURN_KEY_ID         … Cloudflare Realtime の TURN キーID
 //     TURN_KEY_API_TOKEN  … 同 APIトークン
+//   ★S3 で追加した任意の設定（未設定なら従来どおりの挙動）:
+//     TURN_MAX_PER_MIN    … 1クライアント（IP+Origin）の 1 分あたり上限。既定 30
+//     TURN_ACCESS_SECRET  … 設定したときだけ「X-Pot-Turn-Token」ヘッダを要求する（下記）
 //   公開URL: https://pot-turn.itsuma-kuramoto.workers.dev/
 //   本体からは index.html の TURN_WORKER_URL が指している。
 //
@@ -36,7 +39,19 @@
 //   （CDN が origin ごとに応答を分けないと、他人向けの応答が混ざる）。
 //   `!ok` の 403 は**上流を叩く前**に置く＝弾く相手のぶんの資格情報を発行しない。
 //   移設中は新旧＋org の github.io を並べておく（旧サイトを誘導ページにしたら外せる）。
-// - **レート制限は意図して入れていない** … 残る経路は Origin を詐称するスクリプトのみで、
+// - **レート制限（S3・2026-10-31 導入）** … 無料プランの日次 10 万リクエストを使い切られると、
+//   その日は資格情報が配れず全員が直結（IP が見える）に落ちる。以前は「意図して入れていない」
+//   （下記 2026-10-12 の検討記録）だったが、アプリ通常の取り直し（10 分に 1 回・通話開始時数回）を
+//   大きく上回る 1 分 30 回/IP を上限として入れる。二段構成:
+//     ① wrangler の Rate Limiting binding（`env.turnLimiter`）が設定されていればそれを使う
+//       （wrangler.toml の [[unsafe.bindings]] type="ratelimit"・呼び方は limit({ key })。設定方法はこの下の B 案参照）
+//     ② 未設定なら isolates 内のメモリすべり窓（近似：isolate が増えるほど緩和側にずれる）
+//   超過は 429 + Retry-After:30。アプリ側は 429 を「上流が一時的に拒否」として従来の
+//   502 と同じフォールバック（直結 STUN）で扱う＝通話は落ちない。
+//   ※ 多数の IP を使い分けられると防ぎきれない（2026-10-12 の記録と同じ留保）。監視はやめない。
+//   旧記録（2026-10-12、導入前の検討）：叩き続けて使い切られると課金ではなく「止まる」リスク。
+//   検討案：A＝独自ドメインへ移して WAF のレート制限／B＝Wrangler の Rate Limiting binding
+//   （画面から設定不可・デプロイ手順が変わる）／C＝アプリの取り直し間隔（10 分）を延ばす。
 //   得られるのは4時間の利用権（2026-08-13 に30分から延長）。**その代わりの前提条件が
 //   「Cloudflare ダッシュボードで TURN 利用量を監視すること（アラートか月イチの目視）」。
 //   これを怠ると保留の根拠が消える。窓が8倍になったぶん、この監視の重みも増した。**
@@ -44,11 +59,33 @@
 //   叩き続けて使い切られると、その日は資格情報が配れず全員が直結（IP が見える）に落ちる＝課金ではなく「止まる」リスク。
 //   検討した案：A＝Worker を potalk.app の独自ドメインに移して WAF のレート制限ルール（画面だけ）／B＝Wrangler で
 //   Rate Limiting binding（画面からは設定不可・デプロイ手順が変わる）／C＝アプリの取り直し間隔（10 分）を延ばす。
-//   いずれも多数の IP を使い分けられると防ぎきれない。**利用者の判断で、今のまま Workers のリクエスト数を時々目視する**
-//   （急増していたら A を検討）。
+//   いずれも多数の IP を使い分けられると防ぎきれない。①は B の実装、②は当面の暫定版。
+// **認証の土台（S3・2026-10-31）**：`TURN_ACCESS_SECRET` を設定したときだけ `X-Pot-Turn-Token`
+//   ヘッダの一致を要求し、違えば 401。既定（未設定）は従来どおりヘッダなしで通す。
+//   注意：静的な index.html はソースが丸見えなので**恒久の秘密にはできない**（2026-06-11 の
+//   「公開ファイルに秘密を書かない」教訓）。この土台は (a) 管理下のクライアントだけで試す
+//   移行スイッチ、(b) 将来「Worker が発行する短命の使い捨てトークン」へ作り替えるための
+//   枠、として置く。アプリ側がトークンを送るようにするのは index.html 側の次の変更。
+//   比較は通常の !==（Worker に定数時間比較の要件はないが、秘密は推測されにくい長さを選ぶ）。
 // - `Cache-Control: no-store` … 短命の資格情報をブラウザにキャッシュさせない。
 // - 上流の応答は `iceServers` だけ取り出して返す（余計なフィールドを漏らさない）。
 //   エラーも上流の文面を返さず 'turn unavailable' に丸める。
+
+// ---- S3 ②: binding 未設定時のメモリすべり窓（isolate 単位の近似。0 にしてはならない:
+//      上流 fetch の前に置く＝弾いたぶんは Cloudflare を叩かない）----
+const WINDOW_MS = 60_000
+const MAX_DEFAULT = 30
+const hits = new Map()
+function rateLimited(key, maxPerMin) {
+  const now = Date.now()
+  const arr = (hits.get(key) || []).filter(t => now - t < WINDOW_MS)
+  arr.push(now)
+  hits.set(key, arr)
+  if (hits.size > 5000) { // 窓外レコードの掃除（叩かれ続けてもメモリは増え続けない）
+    for (const [k, v] of hits) if (!v.length || now - v[v.length - 1] >= WINDOW_MS) hits.delete(k)
+  }
+  return arr.length > maxPerMin
+}
 
 export default {
   async fetch(request, env) {
@@ -58,15 +95,32 @@ export default {
     const cors = {
       'Access-Control-Allow-Origin': ok ? origin : allowed[0],
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Pot-Turn-Token',
       'Vary': 'Origin',
     }
     if (request.method === 'OPTIONS') return new Response(null, { headers: cors })
     if (request.method !== 'GET')
       return new Response(null, { status: 405, headers: cors })
     // ブラウザは cross-origin fetch で必ず Origin を送るので、正規アプリはここを通る。
-    // curl は偽装できるため完封ではない＝一段目のフィルタ（二段目はレート制限）
+    // curl は偽装できるため完封ではない＝一段目のフィルタ（二段目は下の新・レート制限）
     if (!ok) return new Response(null, { status: 403, headers: cors })
+    // ---- S3 認証の土台: 未設定なら素通り（従来互換）----
+    if (env.TURN_ACCESS_SECRET && request.headers.get('X-Pot-Turn-Token') !== env.TURN_ACCESS_SECRET)
+      return new Response(JSON.stringify({ error: 'missing token' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } })
+    // ---- S3 レート制限: 上流を叩く前に弾く ----
+    const clientKey = origin + '|' + (request.headers.get('CF-Connecting-IP') || 'unknown')
+    try {
+      if (env.turnLimiter) {
+        const lim = await env.turnLimiter.limit({ key: clientKey })
+        if (!lim.success) return new Response(JSON.stringify({ error: 'rate limited' }),
+          { status: 429, headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '30' } })
+      } else {
+        const max = Number(env.TURN_MAX_PER_MIN) > 0 ? Number(env.TURN_MAX_PER_MIN) : MAX_DEFAULT
+        if (rateLimited(clientKey, max)) return new Response(JSON.stringify({ error: 'rate limited' }),
+          { status: 429, headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '30' } })
+      }
+    } catch { /* リミタ側が壊れても配信は止めない（fail-open・監視は続けないと危ない） */ }
     try {
       const r = await fetch(
         `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,

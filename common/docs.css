@@ -58,7 +58,7 @@ code{ font-family:ui-monospace,Menlo,monospace; font-size:.92em; background:var(
 .btn:hover{ filter:brightness(1.06); color:var(--join-fg) }
 .btn.ghost{ background:var(--chip); color:var(--text) } .btn.ghost:hover{ background:var(--chip-hover); color:var(--text) }
 /* 手順の番号：内容が順序なので番号を使う */
-.steps{ counter-reset:s; list-style:none; padding:0; display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); max-width:none }
+.steps{ counter-reset:s; list-style:none; padding:0; display:grid; gap:10px; grid-template-columns:1fr; max-width:38em }   /* 縦に流す（横並びだと手順ごとの文量の差が目立つため・2026-10-28） */
 .steps li{ counter-increment:s; background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:14px 16px 14px 52px; position:relative; margin:0 }
 .steps li::before{ content:counter(s); position:absolute; left:14px; top:12px; width:28px; height:28px; border-radius:50%; background:var(--accent-dim); color:var(--accent-soft); font-weight:700; display:flex; align-items:center; justify-content:center }
 .steps b{ display:block; color:var(--text); margin-bottom:2px }

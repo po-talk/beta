@@ -55,6 +55,7 @@
   .trust{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px }
   .trust div{ flex:1 1 230px; padding:12px 14px; border-radius:14px; background:var(--accent-dim); color:var(--text); font-size:15px }
   .trust b{ display:block }
+  .trust div:first-child{ flex-basis:100% }   /* 文量の多い「声は残りません」を 1 行まるごとに・残りは横に並べる */
   .eyebrow{ display:inline-block; font-size:13px; letter-spacing:.06em; color:var(--accent-soft); background:var(--accent-dim); border-radius:999px; padding:2px 12px; margin-bottom:10px }
   .hero .plain{ font-size:17px; color:var(--text); max-width:34em; margin-top:8px }
   .hero .lead{ margin-top:6px }
@@ -1295,32 +1296,32 @@ l-54 0 3 -32z"/>
   <section aria-labelledby="how-h">
     <h2 id="how-h">はじめての参加方法</h2>
     <ol class="steps">
-      <li><b>部屋を選ぶ</b><a href="#pots-h">このページの下の 2 つの部屋</a>か、<a href="https://potalk.app/">「通話中の部屋」</a>から選びます。下の「はじめましての部屋」は、誰もいなくても大丈夫です。入って待てば、次に来た人と話せます。</li>
-      <li><b>名前を決めて「参加する」</b>名前と絵文字を決めて「参加する」を押します。本名でなくて大丈夫です。マイクの使用をきかれたら「許可」を押します（一度だけ）。</li>
-      <li><b>ひとこと挨拶する</b>「こんにちは」だけで十分です。話すのが苦手なら、相づちの絵文字や「ひとこと」の文字でも、聞いているだけでも大丈夫です。</li>
+      <li><b>名前とアバターを決める</b>本名でなくて大丈夫です。アバターは絵文字から選べます。</li>
+      <li><b>部屋を選んで「参加する」</b><a href="#pots-h">このページの下の 2 つの部屋</a>か、<a href="https://potalk.app/">「通話中の部屋」</a>から選びます。誰もいなくても、入って待てば次に来た人と話せます。マイクの使用をきかれたら「許可」を選びます（一度だけ）。</li>
+      <li><b>ひとこと挨拶する</b>「こんにちは」だけで十分です。聞いているだけでも大丈夫です。</li>
     </ol>
-    <p class="ease">はじめての参加でも大丈夫です。まずは気になる部屋を、のぞいてみる感覚で入ってみてください。</p>
-    <p><small>友だちと話したいときは、ぽっと通話で自分の部屋を作り、招待リンクか QR コードを送ります。リンクがそのまま部屋の入口になります。</small></p>
+    <p class="ease">気になる部屋を、のぞいてみる感覚で入ってみてください。</p>
+    <p><small>友だちと話したいときは、ぽっと通話で自分の部屋を作り、招待リンクか QR コードを送ります。リンクを開いた人は、そのままその部屋に入ります。</small></p>
   </section>
 
   <section aria-labelledby="pots-h">
     <h2 id="pots-h">いま参加できる部屋</h2>
-    <p>いつも開いている部屋が 2 つあります。人がいれば「ポットが温かい」と表示されます。以下のバナーを押すと、ぽっと通話が開いてその部屋に入れます。</p>
+    <p>やまびこ部屋でマイクと聞こえ方を確かめて、はじめましての部屋へ。しばらく待っていると、あとから来た人と話せます。</p>
     <div class="pots">
-      <a class="pot" data-room="はじめましての部屋" href="../#room=%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%A6%E3%81%AE%E9%83%A8%E5%B1%8B&name=%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%A6%E3%81%AE%E9%83%A8%E5%B1%8B">
-        <span class="ic">🫖</span>
-        <span class="name">はじめましての部屋</span>
-        <span class="state">確認中…</span>
-        <span class="cta">入って待つと、次に来た人と話せます →</span>
-      </a>
       <a class="pot" data-room="やまびこ部屋⛰️（5秒で返信）" data-id="U7PU1_IarAwtqnBf" href="../#room=U7PU1_IarAwtqnBf&name=%E3%82%84%E3%81%BE%E3%81%B3%E3%81%93%E9%83%A8%E5%B1%8B%E2%9B%B0%EF%B8%8F%EF%BC%885%E7%A7%92%E3%81%A7%E8%BF%94%E4%BF%A1%EF%BC%89">
         <span class="ic">⛰️</span>
         <span class="name">やまびこ部屋（声を試す）</span>
         <span class="state">確認中…</span>
         <span class="cta" data-fixed>5 秒後に自分の声が返ってきます。マイクの確認にどうぞ →</span>
       </a>
+      <a class="pot" data-room="はじめましての部屋" href="../#room=%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%A6%E3%81%AE%E9%83%A8%E5%B1%8B&name=%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%A6%E3%81%AE%E9%83%A8%E5%B1%8B">
+        <span class="ic">🫖</span>
+        <span class="name">はじめましての部屋</span>
+        <span class="state">確認中…</span>
+        <span class="cta">入って待つと、次に来た人と話せます →</span>
+      </a>
     </div>
-    <p><small>ほかにも、いま人がいる部屋は、ぽっと通話の「通話中の部屋」に並びます。1 つの部屋に入れるのは 8 人までです。いっぱいなら、新しい部屋を作れます。</small></p>
+    <p><small>1 つの部屋に入れるのは 8 人までです。いっぱいなら、新しい部屋を作れます。</small></p>
   </section>
 
   <section aria-labelledby="faq-h">
@@ -1328,10 +1329,6 @@ l-54 0 3 -32z"/>
     <dl class="faq">
       <dt>知らない人の部屋に入ってもいいですか？</dt>
       <dd>はい。知らない人どうしで話すための場所なので、気にせず入って大丈夫です。登録も予約もいりません。</dd>
-      <dt>誰もいないときは？</dt>
-      <dd>入って待っていると、次に来た人と話せます。上の 2 つの部屋は、人がいるかが見えます。</dd>
-      <dt>入ったら何をすればいいですか？</dt>
-      <dd>まず「こんにちは」とひとこと言ってみてください。話題タグを見れば、何の話かが分かります。</dd>
       <dt>話すのが苦手でも大丈夫ですか？</dt>
       <dd>大丈夫です。相づちの絵文字や、短い文字の「ひとこと」だけでも十分です。聞いているうちに話したくなったら、そのとき話してください。</dd>
     </dl>
@@ -1341,30 +1338,29 @@ l-54 0 3 -32z"/>
   <section aria-labelledby="trust-h">
     <h2 id="trust-h">安心して入れる理由</h2>
     <div class="trust">
-      <div><b>声は残らない</b>声はお互いのブラウザの間を、暗号化したまま行き来します。途中で保存されることはありません。</div>
-      <div><b>部屋を出れば終わり</b>部屋は人がいなくなると消えます。録音の機能はありません。</div>
-      <div><b>登録なし・無料</b>メールアドレスも電話番号もお伺いしません。</div>
-      <div><b>中身は公開しています</b>プログラムはすべて <a href="https://github.com/po-talk/po-talk.github.io">GitHub</a> で読めます。隠している仕組みはありません。</div>
+      <div><b>声は残りません</b>録音の機能はなく、声は暗号化したままお互いのブラウザの間を行き来します。人がいなくなった部屋は消えます。</div>
+      <div><b>登録なし・無料</b>メールアドレスも電話番号もいりません。</div>
+      <div><b>中身は公開しています</b>プログラムはすべて <a href="https://github.com/po-talk/po-talk.github.io">GitHub</a> で読めます。</div>
       <div><b>合わない人は「無視」できます</b>その人の声と文字が、自分の画面からだけ消えます。相手には伝わりません。</div>
     </div>
     <p><small>詳しくは<a href="../manual/">使い方</a>と<a href="../tech/">しくみ</a>をご覧ください。</small></p>
   </section>
 
   <section aria-labelledby="env-h">
-    <h2 id="env-h">使える環境</h2>
+    <h2 id="env-h">使える環境（推奨）</h2>
     <div class="env">
       <div><b>iPhone / iPad</b><br>Safari か Chrome。</div>
       <div><b>Android</b><br>Chrome。</div>
       <div><b>パソコン</b><br>Chrome、Edge、Safari、Firefox。</div>
     </div>
-    <p class="note">LINE や X、Instagram の中で開いたブラウザでは、マイクが使えないことがあります。<br>その場合は画面の案内から Safari や Chrome で開き直してください。<br>ホーム画面に追加するときは「Web アプリとして開く」をオフにして、ブラウザで開くのがおすすめです（小窓などが使えます）。</p>
+    <p class="note">LINE や X、Instagram の中で開いたブラウザでは、マイクが使えないことがあります。<br>その場合は画面の案内から Safari や Chrome で開き直してください。<br>ほかのブラウザは動作未確認です。使えた環境（機種・ブラウザ）は、<a href="https://z.wikiwiki.jp/potalk/topic/2" target="_blank" rel="noopener">ご意見・質問ばんの「利用環境を教えて」</a>で教えてください。</p>
     <details class="more">
       <summary>部屋でできること</summary>
       <ul class="feat">
         <li><span class="ic">🎙️</span><div><b>声だけで話す</b><span>顔は出ません。ミュートはいつでも。</span></div></li>
         <li><span class="ic">💬</span><div><b>ひとことと相づち</b><span>短い文字と、8 種類の絵文字のリアクション。</span></div></li>
         <li><span class="ic">🏷️</span><div><b>話題タグ</b><span>いま何の話をしているか、部屋にタグを付けられます。</span></div></li>
-        <li><span class="ic">📣</span><div><b>配信部屋</b><span>主の声だけが流れる部屋。聞くだけの人は名前が出ないので、気軽にのぞけます。話したくなったら「通話希望」、おたよりも送れます。</span></div></li>
+        <li><span class="ic">📣</span><div><b>配信部屋</b><span>配信者の声だけが流れる部屋。聞いている人は名前が出ないので、気軽にのぞけます。話したくなったら「通話希望」、おたよりも送れます。</span></div></li>
         <li><span class="ic">🗣️</span><div><b>ひとことの読み上げ</b><span>配信部屋では、届いたひとことを「つくよみちゃん」の声で読み上げられます。</span></div></li>
         <li><span class="ic">🎵</span><div><b>BGM と小窓</b><span>静かな BGM を流したり、小さな窓に畳んでほかの画面を見ながら。</span></div></li>
         <li><span class="ic">🌗</span><div><b>昼と夜</b><span>時刻で色が変わります。昼はミルクティー、夜は紺。</span></div></li>
@@ -1375,7 +1371,6 @@ l-54 0 3 -32z"/>
   <section aria-labelledby="go-h">
     <h2 id="go-h" class="sr">では、部屋へ</h2>
     <div class="go">
-      <p>ここまで読めば、ひとまず入れます。気になる部屋があれば、そのまま入ってみてください。</p>
       <a class="btn big" href="../">ぽっと通話を開いて部屋に入る</a>
       <a class="btn ghost" href="../manual/">使い方を読む</a>
     </div>
