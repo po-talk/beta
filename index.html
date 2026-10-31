@@ -1713,6 +1713,36 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
 const APP_VERSION = 'v0.16.23'
 
+// ─── 節マニフェスト（目次・出現順） ───────────────────────────────────────
+// このファイルは下のバナーコメントで探せる。バナーは実務の目録としてそのまま保つ。
+//  1. 繋がらなかった PeerConnection の掃除（Trystero を読み込む前に仕込む）
+//  2. 配信部屋の部屋ID（`ハッシュ~pk~指紋`）
+//  3. 配信部屋の鍵（ECDSA P-256・IndexedDB・取り出せない秘密鍵）
+//  4. 部屋の実体＝ランダムなハッシュ（v0.13.0）
+//  5. 名刺（プロフィールカード・v0.16.0）
+//  6. 音声の到着監視
+//  7. 通話中のタブ
+//  8. 全体の音量
+//  9. BGM
+// 10. 小窓（ピクチャーインピクチャー）
+// 11. 通話中の TURN 資格情報の入れ替え
+// 12. 人数上限
+// 13. 無視（この人のものを受け取らない）
+// 14. リアクション
+// 15. ひとこと（テキスト）
+// 16. 配信部屋（誰の音を鳴らすかを、署名で決める）
+// 17. 配信者の本人確認（チャレンジ&レスポンス・v0.15.28）
+// 18. 配信の終わり（聞き役側・v0.14.0）
+// 19. おたより（配信部屋の「ハガキ募集」）
+// 20. 参加先と役割の確定（runJoin の頭）
+// 21. データチャネルの配線（runJoin の中身）
+// 22. 参加が成立した後の処理（runJoin の尻尾）
+// 23. 自動復帰
+// 24. ロビー（通話中の部屋の死活監視・一覧）
+// 25. 在室の Nostr 直publish（段階A）
+// 26. 閲覧者数（いまこのページを開いている人数）
+// （上の 1 は APP_VERSION より前のブロックにある）
+
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
@@ -1722,6 +1752,10 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v) } catch {} }
 const ssGet = (k, d = null) => { try { return sessionStorage.getItem(k) ?? d } catch { return d } }
 const ssSet = (k, v) => { try { sessionStorage.setItem(k, v) } catch {} }
 const ssDel = k => { try { sessionStorage.removeItem(k) } catch {} }
+// localStorage に置いてある JSON を*読む*ときに通す。壊れた値・未保存では {}
+// を返す（例外時も非オブジェクト時も {}・以下同一）。v0.16 以前の 2 か所で
+// try/JSON.parse(lsGet(..)||'{}')/catch の同一形を集約（stats 復元と loadCard）。
+const lsJson = k => { try { const o = JSON.parse(lsGet(k) || '{}'); return o && typeof o === 'object' ? o : {} } catch { return {} } }
 // データチャネルへの送信は**必ずここを通す**。action が未生成（参加前・退出後）でも同期例外にならず、
 // 送信の reject も握る（届かない相手がいても他の処理を止めない）。target を渡せば1人宛て
 const sendTo = (act, data, target) => { try { act?.send(data, target ? { target } : undefined).catch(() => {}) } catch {} }
@@ -2484,7 +2518,7 @@ renderProfileSummary()
 // 1回あたりの平均通話時間**で、短め多め＝小さいほう（🌷🌲）／長めときどき＝大きいほう（🌻🌳）。
 const STATS_KEY = 'pot-call-stats'
 let stats = { seconds: 0, joins: 0, days: 0, lastDay: '' }
-try { stats = { ...stats, ...JSON.parse(lsGet(STATS_KEY) || '{}') } } catch {}
+stats = { ...stats, ...lsJson(STATS_KEY) }
 const saveStats = () => lsSet(STATS_KEY, JSON.stringify(stats))
 const localDay = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() }
 const stageOf = () => {
@@ -2513,10 +2547,7 @@ const mySeconds = () => call.joinedId ? Math.floor((performance.now() - call.joi
 // 完全サーバーレス・localStorage 保持・P2P オンデマンド要求（action 'card'）。
 const CARD_KEY = 'pot-call-card'
 const CARD_REQ_MS = 10000     // 同じ相手からの要求に応じる間隔（連打への自衛）
-const loadCard = () => {
-  try { const o = JSON.parse(lsGet(CARD_KEY) || '{}'); return o && typeof o === 'object' ? o : {} }
-  catch { return {} }
-}
+const loadCard = () => lsJson(CARD_KEY)
 const saveCard = c => lsSet(CARD_KEY, JSON.stringify(c))
 const CARD_NOIMG_KEY = 'pot-call-card-noimg'   // 「相手の名刺の画像を表示しない」（v0.16.1）
 
