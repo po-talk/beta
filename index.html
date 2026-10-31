@@ -1744,6 +1744,11 @@ const APP_VERSION = 'v0.16.23'
 // （上の 1 は APP_VERSION より前のブロックにある）
 
 const $ = id => document.getElementById(id)
+// ─ 表示トグルの共通化 ─ 表示中のコントロール行は flex/none の往復がほとんどなので 1 本に寄せる
+const vis = (id, on) => { const el = $(id); if (el) el.style.display = on ? 'flex' : 'none' }
+// ─ frame スケジュールの共通化 ─ requestAnimationFrame の直書きを束ねる（2 段はスタイル確定待ち）
+const raf = fn => requestAnimationFrame(fn)
+const raf2 = fn => requestAnimationFrame(() => requestAnimationFrame(fn))
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
@@ -2505,7 +2510,7 @@ profileBox.querySelector('summary').addEventListener('click', e => {
   } else {
     profileBox.classList.add('pf-collapsed')
     profileBox.open = true
-    requestAnimationFrame(() => requestAnimationFrame(() => profileBox.classList.remove('pf-collapsed')))
+    raf2(() => profileBox.classList.remove('pf-collapsed'))
   }
   // open はまだ切り替わっていない（閉じる側は遅延する）ので、文言はこれからの状態で更新する
   $('pfEdit').textContent = profileBox.classList.contains('pf-collapsed') && profileBox.open ? '変更 ▾' : '閉じる ▴'
@@ -2650,47 +2655,24 @@ const HEART_HALF_R = 'M14.36 4.77 C14.89 4.53 15.48 4.40 16.10 4.40 C18.80 4.40 
 const HEART_BROKEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" overflow="visible" aria-hidden="true"><g transform="rotate(-9 12 21)"><path d="' + HEART_HALF_L + '"/></g><g transform="rotate(9 12 21)"><path d="' + HEART_HALF_R + '"/></g></svg>'
 
 // SNS 定義（ID ホワイトリスト方式・URL 自由入力を排除して XSS/フィッシング防止）
+// ─ 共通の ID 解析（入力検証ヘルパー）─ 「URL 形か素の ID を受け、ホワイトリストの ID だけ返す」
+// 定型を 1 本に寄せる。URL 抽出後も同じホワイトリストで再検査するのは元の形と同じ結果。
+// 例外（youtube の @ハンドル/UC… 、amazon の複合 URL 、zap/nostr の特殊系）は元の parse を残す。
+const idDef = (name, host, idRe, urlOf, at) => ({
+  name, re: idRe,
+  parse: s => {
+    s = at ? s.trim().replace(/^@/, '') : s.trim()
+    const m = s.match(new RegExp('(?:https?:\\/\\/)?(?:www\\.)?(?:' + host + ')\\/(' + idRe.source.slice(1, -1) + ')(?:\\/|\\?|$)', 'i'))
+    if (m && idRe.test(m[1])) return m[1]
+    return idRe.test(s) ? s : null
+  },
+  url: urlOf
+})
 const SNS_DEFS = {
-  x: {
-    name: '𝕏', re: /^[a-zA-Z0-9_]{1,15}$/,
-    parse: s => {
-      s = s.trim().replace(/^@/, '')
-      const m = s.match(/(?:https?:\/\/)?(?:www\.)?(?:x|twitter)\.com\/([a-zA-Z0-9_]{1,15})(?:\/|\?|$)/i)
-      if (m) return m[1]
-      return /^[a-zA-Z0-9_]{1,15}$/.test(s) ? s : null
-    },
-    url: id => 'https://x.com/' + id
-  },
-  github: {
-    name: 'GitHub', re: /^[a-zA-Z0-9-]{1,39}$/,
-    parse: s => {
-      s = s.trim().replace(/^@/, '')
-      const m = s.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9-]{1,39})(?:\/|\?|$)/i)
-      if (m) return m[1]
-      return /^[a-zA-Z0-9-]{1,39}$/.test(s) ? s : null
-    },
-    url: id => 'https://github.com/' + id
-  },
-  note: {
-    name: 'note', re: /^[a-zA-Z0-9_]{3,32}$/,
-    parse: s => {
-      s = s.trim()
-      const m = s.match(/(?:https?:\/\/)?(?:www\.)?note\.com\/([a-zA-Z0-9_]{3,32})(?:\/|\?|$)/i)
-      if (m) return m[1]
-      return /^[a-zA-Z0-9_]{3,32}$/.test(s) ? s : null
-    },
-    url: id => 'https://note.com/' + id
-  },
-  instagram: {
-    name: 'Instagram', re: /^[a-zA-Z0-9._]{1,30}$/,
-    parse: s => {
-      s = s.trim().replace(/^@/, '')
-      const m = s.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([a-zA-Z0-9._]{1,30})(?:\/|\?|$)/i)
-      if (m) return m[1]
-      return /^[a-zA-Z0-9._]{1,30}$/.test(s) ? s : null
-    },
-    url: id => 'https://www.instagram.com/' + id + '/'
-  },
+  x: idDef('𝕏', 'x\\.com|twitter\\.com', /^[a-zA-Z0-9_]{1,15}$/, id => 'https://x.com/' + id, true),
+  github: idDef('GitHub', 'github\\.com', /^[a-zA-Z0-9-]{1,39}$/, id => 'https://github.com/' + id, true),
+  note: idDef('note', 'note\\.com', /^[a-zA-Z0-9_]{3,32}$/, id => 'https://note.com/' + id),
+  instagram: idDef('Instagram', 'instagram\\.com', /^[a-zA-Z0-9._]{1,30}$/, id => 'https://www.instagram.com/' + id + '/', true),
   // YouTube（v0.16.7・まずは自己申告だけ。✅ の道は HANDOFF のメモ）。ID は `@ハンドル` か `UC…`（24 字のチャンネル ID）。
   // ★ハンドルは 2023 年から日本語などの文字も使える＝英数字だけにしない（文字・数字・結合文字と . _ - ·）。
   //   見えない文字・向きを変える文字は文字種に含まれないので、ここで自然に弾かれる。
@@ -2723,16 +2705,7 @@ const SNS_DEFS = {
 }
 // お礼・チップ窓口定義
 const TIP_DEFS = {
-  ofuse: {
-    name: 'OFUSE', label: '☕ OFUSE でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
-    parse: s => {
-      s = s.trim()
-      const m = s.match(/(?:https?:\/\/)?(?:www\.)?ofuse\.me\/(?:users\/)?([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i)
-      if (m) return m[1]
-      return /^[a-zA-Z0-9_]{1,30}$/.test(s) ? s : null
-    },
-    url: id => 'https://ofuse.me/' + id
-  },
+  ofuse: { label: '☕ OFUSE でお礼', ...idDef('OFUSE', 'ofuse\\.me(?:\\/users)?', /^[a-zA-Z0-9_]{1,30}$/, id => 'https://ofuse.me/' + id) },
   amazon: {
     name: 'Amazon ほしい物リスト', label: '📦 ほしい物リストでお礼',
     // ★ID だけを記憶して送る（「URL を送らない」原則・PROTOCOL §11）。短縮 URL（amzn.asia / amzn.to）は
@@ -2760,26 +2733,8 @@ const TIP_DEFS = {
     // npub は lightning: の宛先にならない（lud16 のアドレスだけが送金先）。npub は Nostr のプロフィールを開いてそこから Zap してもらう
     url: id => id.startsWith('npub1') ? 'https://njump.me/' + id : 'lightning:' + id
   },
-  kofi: {
-    name: 'Ko-fi', label: '☕ Ko-fi でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
-    parse: s => {
-      s = s.trim()
-      const m = s.match(/(?:https?:\/\/)?(?:www\.)?ko-fi\.com\/([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i)
-      if (m) return m[1]
-      return /^[a-zA-Z0-9_]{1,30}$/.test(s) ? s : null
-    },
-    url: id => 'https://ko-fi.com/' + id
-  },
-  bmac: {
-    name: 'Buy Me a Coffee', label: '🥐 Buy Me a Coffee でお礼', re: /^[a-zA-Z0-9_]{1,30}$/,
-    parse: s => {
-      s = s.trim()
-      const m = s.match(/(?:https?:\/\/)?(?:www\.)?buymeacoffee\.com\/([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i)
-      if (m) return m[1]
-      return /^[a-zA-Z0-9_]{1,30}$/.test(s) ? s : null
-    },
-    url: id => 'https://buymeacoffee.com/' + id
-  }
+  kofi: { label: '☕ Ko-fi でお礼', ...idDef('Ko-fi', 'ko-fi\\.com', /^[a-zA-Z0-9_]{1,30}$/, id => 'https://ko-fi.com/' + id) },
+  bmac: { label: '🥐 Buy Me a Coffee でお礼', ...idDef('Buy Me a Coffee', 'buymeacoffee\\.com', /^[a-zA-Z0-9_]{1,30}$/, id => 'https://buymeacoffee.com/' + id) },
 }
 
 // 受け取った名刺データの検証（改造クライアント対策）
@@ -4030,7 +3985,7 @@ membersEl.addEventListener('scroll', updateMembersFade, { passive: true })
 const renderMembers = () => {
   membersEl.replaceChildren(); emojiEls.clear()
   membersEl.classList.toggle('scroll', call.peers.size + 1 > MEMBERS_VIEW)
-  requestAnimationFrame(updateMembersFade)
+  raf(updateMembersFade)
   renderTabs()                       // タブの出し入れ。**未参加でも通るよう、下の早期 return より前に**
   renderMail(); renderMailNow()      // おたより（配信部屋のみ。未参加なら中で空にする）
   renderCrowd()                      // 人数の注意。**未参加でも通るよう、下の早期 return より前に置く**
@@ -4465,18 +4420,32 @@ const bgmSchedule = (stepSec, onStep) => {
   bgm.timers.push(setInterval(tick, 400))
 }
 const ctx0 = () => audioCtx
-const bgmPing = (t, freq, dur, type, gain, pan) => {
-  const ctx = ctx0()
+// ─ 共通の音の粒（音合成ヘルパー）─ 「発振器＋Gain＋柔らかアタック→減衰」の反復を一元化。
+// playTones（通知音）・bgmPing（BGM）が同じ形を使っていた。音の形（エンベロープの値）は変えていない。
+const oscVoice = (ctx, { at, dur, freq, type = 'sine', peak, dest, pan, stopAt }) => {
   const o = ctx.createOscillator(), g = ctx.createGain()
-  o.type = type; o.frequency.value = freq
-  g.gain.setValueAtTime(0.0001, t)
-  g.gain.exponentialRampToValueAtTime(gain, t + 0.012)
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+  o.type = type; o.frequency.setValueAtTime(freq, at)
+  g.gain.setValueAtTime(0.0001, at)
+  g.gain.exponentialRampToValueAtTime(peak, at + 0.012)
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
   let out = g
   if (pan !== undefined && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p }
-  o.connect(g); out.connect(bgm.gain)
-  o.start(t); o.stop(t + dur + 0.05)
+  o.connect(g); out.connect(dest)
+  o.start(at); o.stop(stopAt !== undefined ? stopAt : at + dur + 0.03)
 }
+// ノイズバッファを「フィルター→ソフトアタック→指数的減衰」で鳴らす 1 発（BGM のシェイカー・火の粉・薪の爆ぜで共通）
+const noiseVoice = (ctx, { at, dur, buf, type, freq, q = 1, peak, atk, dest, pan, stopAt }) => {
+  const src = ctx.createBufferSource(); src.buffer = buf
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(0.0001, at)
+  g.gain.linearRampToValueAtTime(peak, at + atk)
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+  src.connect(f); f.connect(g)
+  if (pan !== undefined && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(dest) } else g.connect(dest)
+  src.start(at); src.stop(stopAt !== undefined ? stopAt : at + dur + 0.01)
+}
+const bgmPing = (t, freq, dur, type, gain, pan) => oscVoice(ctx0(), { at: t, dur, freq, type, peak: gain, pan, dest: bgm.gain, stopAt: t + dur + 0.05 })
 const BGM_HZ = m => 440 * Math.pow(2, (m - 69) / 12)
 const BGM_CHORDS = [   // Cキーのダイアトニック7th（外れの進行が出にくい範囲に絞る）
   [60, [0, 4, 7, 11]], [62, [0, 3, 7, 10]], [64, [0, 3, 7, 10]],
@@ -4494,13 +4463,8 @@ const bgmTune = seed => {
     if (sN === 0 || sN === 11) bgmPing(t, BGM_HZ(root - 24), 0.5, 'sine', 0.5)
     if (comp.includes(sN)) ivs.forEach((iv, k) => bgmPing(t, BGM_HZ(root + iv), 0.34, 'triangle', 0.075, (k - 1.5) * 0.2))
     if (sN % 2 === 0) {
-      const src = ctx.createBufferSource(), g = ctx.createGain(), f = ctx.createBiquadFilter()
-      src.buffer = noise; f.type = 'highpass'; f.frequency.value = 6000
-      const v = sN % 4 === 0 ? 0.05 : 0.028
-      g.gain.setValueAtTime(0.0001, t)
-      g.gain.linearRampToValueAtTime(v, t + 0.003)                  // 3ms のソフトアタック（ステップクリック防止）
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06)
-      src.connect(f); f.connect(g); g.connect(bgm.gain); src.start(t); src.stop(t + 0.08)
+      // 3ms のソフトアタック（ステップクリック防止）（noiseVoice 共通）
+      noiseVoice(ctx, { at: t, dur: 0.06, buf: noise, type: 'highpass', freq: 6000, q: 1, peak: sN % 4 === 0 ? 0.05 : 0.028, atk: 0.003, dest: bgm.gain, stopAt: t + 0.08 })
     }
     if (sN === 4 || sN === 12) bgmPing(t, BGM_HZ(root + ivs[Math.floor(rnd() * ivs.length)] + 12), 0.42, 'triangle', 0.09, 0.15)
   })
@@ -4521,7 +4485,7 @@ const bgmAmbient = seed => {
     if (!bgm) return
     const [root, ivs] = prog[n++ % 4], t = ctx.currentTime
     ivs.concat([12]).forEach((iv, k) => {
-      const o = ctx.createOscillator(), g = ctx.createGain()
+      const o = ctx.createOscillator(), g = ctx.createGain()   // 11秒かけて入って抜ける直線エンベロープ（和音専用の形なので oscVoice は使わない。ワンショットなので bgmTrack には入れない）
       o.type = k % 2 ? 'sine' : 'triangle'
       o.frequency.value = BGM_HZ(root + iv - 12) * (1 + (rnd() - 0.5) * 0.004)
       g.gain.setValueAtTime(0.0001, t)
@@ -4689,32 +4653,15 @@ const bgmBonfire = seed => {
     const nTicks = Math.random() < FIRE.burst ? 3 + Math.floor(Math.random() * 4) : (Math.random() < FIRE.tickRate * 0.05 ? 1 : 0)
     for (let i = 0; i < nTicks; i++) {
       const tt = t + (nTicks > 1 ? Math.random() * 0.15 : 0)
-      const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain()
-      src.buffer = noise; bp.type = 'bandpass'; bp.frequency.value = FIRE.tickF * (0.7 + Math.random() * 0.6); bp.Q.value = 6
       const d = FIRE.tickDur / 1000 * (0.6 + Math.random() * 0.8)
-      g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(FIRE.tickLvl * (0.5 + Math.random() * 0.5), tt + 0.0007); g.gain.exponentialRampToValueAtTime(0.0001, tt + d)
-      src.connect(bp); bp.connect(g)
-      if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = (Math.random() * 2 - 1) * 0.7; g.connect(p); p.connect(bgm.gain) } else g.connect(bgm.gain)
-      src.start(tt); src.stop(tt + d + 0.01)
+      noiseVoice(ctx, { at: tt, dur: d, buf: noise, type: 'bandpass', freq: FIRE.tickF * (0.7 + Math.random() * 0.6), q: 6, peak: FIRE.tickLvl * (0.5 + Math.random() * 0.5), atk: 0.0007, dest: bgm.gain, pan: (Math.random() * 2 - 1) * 0.7 })   // 左右の散らし（noiseVoice 共通）
     }
 
     // 火の粉パチパチ（気流 vy が立ち上がると発生率が自然にアップ＋気流に乗るステレオ定位）
     const crackleProb = FIRE.crack + Math.max(0, vy) * 0.28
     if (Math.random() < crackleProb) {
-      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain()
-      src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1200 + Math.random() * 2000; f.Q.value = 4
-      const dur = 0.007 + 0.0084 + Math.random() * 0.006
-      g.gain.setValueAtTime(0.0001, t)
-      g.gain.linearRampToValueAtTime(0.700, t + 0.0015)             // 1.5ms のソフトアタック（矩形ステップクリック防止）
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
-      src.connect(f); f.connect(g)
-      if (ctx.createStereoPanner) {
-        const p = ctx.createStereoPanner()
-        const pan = Math.max(-0.95, Math.min(0.95, (Math.random() * 2 - 1) * 0.5 + vx * 0.75))
-        p.pan.value = pan
-        g.connect(p); p.connect(bgm.gain)
-      } else { g.connect(bgm.gain) }
-      src.start(t); src.stop(t + dur + 0.01)
+      // 1.5ms のソフトアタック（矩形ステップクリック防止）、気流に乗るステレオ定位（noiseVoice 共通）
+      noiseVoice(ctx, { at: t, dur: 0.007 + 0.0084 + Math.random() * 0.006, buf: noise, type: 'bandpass', freq: 1200 + Math.random() * 2000, q: 4, peak: 0.700, atk: 0.0015, dest: bgm.gain, pan: Math.max(-0.95, Math.min(0.95, (Math.random() * 2 - 1) * 0.5 + vx * 0.75)) })
     }
 
     // 薪の爆ぜ
@@ -5037,16 +4984,7 @@ const playTones = (notes, vol = 0.11) => {
   let ctx; try { ctx = ensureAudioCtx() } catch { return }
   if (!ctx) return
   const t0 = ctx.currentTime + 0.01
-  notes.forEach(([f, s, d]) => {
-    const o = ctx.createOscillator(), g = ctx.createGain()
-    o.type = 'sine'; o.frequency.value = f
-    const st = t0 + s
-    g.gain.setValueAtTime(0.0001, st)
-    g.gain.exponentialRampToValueAtTime(vol, st + 0.012)        // やわらかいアタック
-    g.gain.exponentialRampToValueAtTime(0.0001, st + d)         // 減衰
-    o.connect(g); g.connect(ensureOut())
-    o.start(st); o.stop(st + d + 0.03)
-  })
+  notes.forEach(([f, s, d]) => oscVoice(ctx, { at: t0 + s, dur: d, freq: f, peak: vol, dest: ensureOut() }))   // やわらかいアタック→減衰（oscVoice 共通）
 }
 const soundJoin  = () => { if (sndPeer && call.soundsArmed) playTones([[660, 0, 0.13], [880, 0.10, 0.17]]) }   // 上昇＝入室
 const soundLeave = () => { if (sndPeer && call.soundsArmed) playTones([[620, 0, 0.13], [440, 0.11, 0.19]]) }   // 下降＝退出
@@ -5608,7 +5546,7 @@ const addAnalyser = (uid, stream) => {
     analyser.fftSize = 512; analyser.smoothingTimeConstant = 0.6
     src.connect(analyser)
     analysers.set(uid, { analyser, data: new Uint8Array(analyser.fftSize), src })
-    if (!vadRAF) vadRAF = requestAnimationFrame(vadTick)
+    if (!vadRAF) vadRAF = raf(vadTick)
     if (uid !== 'self') startLoudWatch()
     if (call.loud.has(uid)) routePeer(uid)   // 抑えた相手のストリームが取り直されたら、新しい音源もリミッターへ
   } catch {}
@@ -5660,7 +5598,7 @@ const vadTick = () => {
     el.parentElement.classList.toggle('speaking', active || reading)
   })
   roomRms = peak > roomRms ? peak : roomRms * 0.82 + peak * 0.18   // アタック速く／ディケイ遅く
-  vadRAF = analysers.size ? requestAnimationFrame(vadTick) : null
+  vadRAF = analysers.size ? raf(vadTick) : null
 }
 
 // ─ 点字EQ（飾り）─ 部屋全体の音量（roomRms＝参加者の中の最大）で高さが上がり、バーごとにランダムに揺れる。
@@ -6713,8 +6651,8 @@ $('bcNoteClose').onclick = () => {
 // 聞き役でいるつもりの人に許可ダイアログが降ってこない（＝入口が軽いままになる）。
 const renderSpeak = () => {
   const may = !!call.joinedId && call.bcast && call.speakers.has(myPeerId)
-  $('speak').style.display = may && !call.stream ? 'flex' : 'none'
-  $('mute').style.display = call.joinedId && call.stream ? 'flex' : 'none'
+  vis('speak', may && !call.stream)
+  vis('mute', call.joinedId && call.stream)
   // 通話希望（v0.15.9）：配信者が募集中で、自分がまだ話せる側でないときだけ。押すと手が挙がる／取り消せる。
   const canRaise = !!call.joinedId && call.bcast && !call.ownerKey && call.reqOpenSeen && !call.speakers.has(myPeerId)
   const rb = $('raise')
@@ -7507,14 +7445,14 @@ const armJoined = (roomId, name, bcast) => {
     //   🌷／🌻 の分かれ目は平均通話時間なので、長く話すと通話の途中で変わる
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
-  $('join').style.display = 'none'; $('leave').style.display = 'flex'
+  vis('join', false); vis('leave', true)
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
   // という「効かないボタン」になっていた（join と leave の非対称）。
-  $('unlock').style.display = 'none'
-  $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
-  $('sndReactRow').style.display = 'flex'
+  vis('unlock', false)
+  vis('sndPeerRow', true)   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
+  vis('sndReactRow', true)
   syncTtsRow(); ttsWarm()   // 読み上げは配信部屋のオーナーだけ。つなぎ直しの引き継ぎではトラックと案内だけ整え、エンジンは最初のひとことまで読まない（v0.15.2。保存はしない・v0.14.50）
   $('retry').hidden = false
   roomInput.disabled = true; lockProfile(true); syncKindRow(); syncCreateBox()
@@ -7696,10 +7634,10 @@ $('mute').onclick = toggleMute
 
 // 参加中の見た目を「未参加」に戻す一式。退出時と、つなぎ直しに失敗して参加できなかった時に使う。
 const resetJoinedUI = () => {
-  $('join').style.display = 'flex'; $('mute').style.display = 'none'; $('leave').style.display = 'none'; $('unlock').style.display = 'none'
-  $('speak').style.display = 'none'; $('speak').disabled = false
-  $('sndPeerRow').style.display = 'none'
-  $('sndReactRow').style.display = 'none'
+  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false)
+  vis('speak', false); $('speak').disabled = false
+  vis('sndPeerRow', false)
+  vis('sndReactRow', false)
   syncTtsRow()    // 退出したので読み上げの行を畳む（joinedId は reset 済み）
   $('retry').hidden = true
   $('pip').hidden = true
