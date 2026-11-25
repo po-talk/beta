@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.32
+  ぽっと通話〈実験版〉 v0.16.33
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1239,6 +1239,18 @@
        朝の空＝正午。時刻モードは 紺 → 朝焼け → ミルクティー → 朝の空 → ミルクティー → 夕焼け → 紺 と、
        昼のあいだ止まらずに動く。朝夕は素直に混ぜると濁った茶を通るので、キーフレームを密に置く。
      ★「面」は時刻で補間、「墨」は面の明るさで入れ替える（朝夕の30分だけ）。中間の灰色の文字を作らない。 -->
+<!-- 旧 β（qramo.github.io/po_call）からの引っ越し（v0.16.33）。案内ページが保存の中身を `#import=…` に載せてここを開く。
+     **ほかの何より先に** URL から外して控える（部屋の読み取り parseHash が `import=` を古い形の部屋名と取り違えないように）。
+     残りの `room=…&name=…` はそのまま＝部屋のリンクから来た人はその部屋へ。取り込むかどうかはモジュールの「引っ越し」がカードで聞く -->
+<script>
+(() => {
+  const m = /(?:^#|&)import=([A-Za-z0-9_-]*)/.exec(location.hash)
+  if (!m) return
+  window.__potImport = m[1]
+  const rest = location.hash.slice(1).split('&').filter(p => !p.startsWith('import=')).join('&')
+  history.replaceState(history.state, '', location.pathname + location.search + (rest ? '#' + rest : ''))
+})()
+</script>
 <script>
 (() => {
   const KEY = 'pot-call-theme'   // 'time'（既定）| 'auto' | 'day' | 'night'
@@ -2059,7 +2071,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.32'
+const APP_VERSION = 'v0.16.33'
 
 // ─── 節マニフェスト（目次・出現順） ───────────────────────────────────────
 // このファイルは下のバナーコメントで探せる。バナーは実務の目録としてそのまま保つ。
@@ -2472,7 +2484,7 @@ const liveSaved = (() => {
 // しかも本人はページが再読込されたことを知らないので「なぜ今？」になる。
 const HELP_HIDE_KEY = 'pot-call-hide-help'
 helpDialog.addEventListener('close', () => lsSet(HELP_HIDE_KEY, '1'))
-if (!rejoin && !liveSaved && lsGet(HELP_HIDE_KEY) !== '1') openHelp()
+if (!rejoin && !liveSaved && window.__potImport == null && lsGet(HELP_HIDE_KEY) !== '1') openHelp()   // 引っ越しのカードと重ねない
 
 // 招待リンクの QR コード（カードの裏・drawBack）。ライブラリは必要時だけ vendor/ から
 // 読み込み、生成はクライアント側＝リンクを外部に送らない。
@@ -8906,6 +8918,48 @@ if (liveSaved) setTimeout(() => {
   notify('📵 裏に置いている間に、通話が閉じられました（スマホが裏のページを閉じることがあります）', {
     key: 'restore', keep: true, warn: true,
     action: { label: '「' + capRoom(liveSaved.name || '前の部屋') + '」に戻る', fn: () => { entryCancel(); joinMuted = !!liveSaved.muted; enterSaved(liveSaved) } }   // ミュートしていたならミュートのまま入る（11-15 実機：ミュートで放置→戻ったらマイクが生きていた）
+  })
+}, 800)
+
+// ───────── 旧 β からの引っ越し（v0.16.33・potalk.app 以外） ─────────
+// 旧 β（qramo.github.io/po_call）は案内ページに替わった。そこで「持って移る」を押すと、旧 β の保存（下の IMPORT_KEYS だけ）を
+// `#import=`（base64url の JSON）に載せてここを開く（# の後ろはどこにも送られない）。<head> の小さなスクリプトが URL から外し、
+// window.__potImport に控えてある。**勝手には書かない**：中身をカードで見せ、押されたら書いて読み込み直す（テーマ・名前・成長は
+// 起動時に読むので、読み込み直すのがいちばん確か）。他人が作ったリンクを踏んでも、押さなければ何も変わらない。
+// 配信部屋の鍵と名刺の鍵は取り出せない鍵（v0.16.23・v0.16.1）なので移せない＝作り直し。名刺の SNS の証拠は鍵が変わるので
+// 「確かめ直し」と出る（syncVerUi の stale）
+const IMPORT_KEYS = ['pot-call-card', 'pot-call-card-noimg', 'pot-call-theme', 'pot-call-vol', 'pot-call-bgm', 'pot-call-bgm-vol',
+  'pot-call-snd-peer', 'pot-call-snd-room', 'pot-call-snd-react', 'pot-call-ntf-room', 'pot-call-tts-noname', 'pot-call-hide-help', DOCK_OPEN_KEY]
+const importRead = raw => {
+  const bin = atob(raw.replace(/-/g, '+').replace(/_/g, '/'))
+  const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))))
+  const it = d && typeof d.items === 'object' ? d.items : {}, out = {}
+  const obj = k => { try { const o = JSON.parse(it[k]); return o && typeof o === 'object' && !Array.isArray(o) ? o : null } catch { return null } }
+  // 名前と絵文字・成長は形を作り直す（余計な項目は持ち込まない）
+  const pf = obj(PROFILE_KEY)
+  if (pf && typeof pf.name === 'string' && typeof pf.emoji === 'string' && pf.emoji.length <= 16)
+    out[PROFILE_KEY] = JSON.stringify({ name: [...pf.name].slice(0, 20).join(''), emoji: pf.emoji })
+  const st = obj(STATS_KEY), num = v => (Number.isFinite(v) && v >= 0 ? v : 0)
+  if (st) out[STATS_KEY] = JSON.stringify({ seconds: num(st.seconds), joins: num(st.joins), days: num(st.days), lastDay: String(st.lastDay || '').slice(0, 12) })
+  for (const k of IMPORT_KEYS) {
+    const v = it[k]
+    if (typeof v !== 'string') continue
+    if (k === CARD_KEY ? v.length <= 60000 && obj(k) : v.length <= 40) out[k] = v
+  }
+  return out
+}
+if (window.__potImport != null && location.hostname !== 'potalk.app') setTimeout(() => {
+  let got = {}
+  try { got = importRead(window.__potImport) } catch {}
+  const n = Object.keys(got).length
+  if (!n) { notify('🧳 旧 β のデータを読み取れませんでした（リンクが途中で切れているかもしれません）。案内ページからもう一度開いてください', { key: 'import', keep: true, warn: true }); return }
+  const pf = got[PROFILE_KEY] ? JSON.parse(got[PROFILE_KEY]) : null, st = got[STATS_KEY] ? JSON.parse(got[STATS_KEY]) : null
+  const what = [pf && (pf.emoji + ' ' + (pf.name || 'ゲスト')), st && st.joins && '通話 ' + st.joins + ' 回ぶんの成長', got[CARD_KEY] && '名刺',
+    '設定 ' + IMPORT_KEYS.filter(k => k !== CARD_KEY && got[k] != null).length + ' 件'].filter(Boolean).join('・')
+  notify('🧳 旧 β から引っ越しますか？ ' + what + '。この端末のいまの名前「' + (profile.name || 'ゲスト') + '」は置き換わります。'
+    + '配信部屋と名刺の本人確認は、ここで作り直しになります', {
+    key: 'import', keep: true,
+    action: { label: '取り込む', fn: () => { for (const [k, v] of Object.entries(got)) lsSet(k, v); location.reload() } }
   })
 }, 800)
 

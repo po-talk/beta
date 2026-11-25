@@ -4414,6 +4414,44 @@ def T34(r):
             % (d['urls'], d['loaded'], d['data'], d['ico']))
 
 
+def T105(r, room):
+    """旧 β（qramo.github.io/po_call）からの引っ越し（v0.16.33）：`#import=…` は起動直後に URL から外れ（部屋のリンクは残る）、
+    カードで聞いてから取り込む（押すまで書かない）。決まった鍵だけ・名前と成長は形を作り直す・読めないデータは警告のカード"""
+    import base64
+    KEYS = ['pot-call-profile', 'pot-call-stats', 'pot-call-theme', 'pot-call-live', 'pot-call-bgm']
+    items = {'pot-call-profile': json.dumps({'name': 'ひっこしのテスト', 'emoji': '🦊', 'evil': 1}),
+             'pot-call-stats': json.dumps({'seconds': 3600, 'joins': 7, 'days': 3, 'lastDay': '2026-11-25'}),
+             'pot-call-theme': 'night', 'pot-call-live': '{"room":"x"}', 'pot-call-bgm': 'x' * 100}
+    raw = base64.urlsafe_b64encode(json.dumps({'v': 1, 'items': items}).encode()).decode().rstrip('=')
+    keep = '#room=' + urllib.parse.quote(room + 'MV') + '&name=%E3%81%B2'
+    # 前のテストのタブが通話中のままだと、成長（pot-call-stats）を定期的に書き戻して取り込んだ値を上書きする（束で 1 回落ちた）
+    for other in r.tabs:
+        try: other.call('Page.navigate', url='about:blank')
+        except Exception: pass
+    a = r.open_tab('#import=' + raw + '&' + keep[1:])
+    saved = a.eval("JSON.stringify(Object.fromEntries(%s.map(k => [k, localStorage.getItem(k)])))" % json.dumps(KEYS))
+    try:
+        stripped = a.eval("location.hash") == keep
+        asked = bool(a.wait_for("window.__potToasts().some(t => t.key === 'import' && t.open && t.text.includes('ひっこしのテスト') && t.text.includes('通話 7 回'))", timeout=5))
+        untouched = 'ひっこし' not in (a.eval("localStorage.getItem('pot-call-profile') || ''") or '')
+        a.eval("[...document.querySelectorAll('.toast-act')].find(b => b.textContent === '取り込む').click()")
+        time.sleep(1.5); a.wait_for(BOOTED, timeout=SHORT)
+        got = json.loads(a.eval("JSON.stringify(Object.fromEntries(%s.map(k => [k, localStorage.getItem(k)])))" % json.dumps(KEYS)))
+        pf = json.loads(got['pot-call-profile'] or '{}')
+        took = pf == {'name': 'ひっこしのテスト', 'emoji': '🦊'} and json.loads(got['pot-call-stats'] or '{}').get('joins') == 7 and got['pot-call-theme'] == 'night'
+        shown = a.eval("document.getElementById('name').value") == 'ひっこしのテスト'
+        only = got['pot-call-live'] != '{"room":"x"}' and got['pot-call-bgm'] != 'x' * 100
+        once = a.eval("location.hash") == keep and not a.eval("window.__potToasts().some(t => t.key === 'import')")
+        b = r.open_tab('#import=AAAA')
+        bad = bool(b.wait_for("window.__potToasts().some(t => t.key === 'import' && t.text.includes('読み取れません'))", timeout=5))
+    finally:
+        a.eval("(o => { for (const [k, v] of Object.entries(o)) v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) })(%s)" % saved)
+    ok = stripped and asked and untouched and took and shown and only and once and bad
+    r.check('T105', '旧 β からの引っ越し：URL から外れ・カードで聞いてから・決まった鍵だけ取り込む', ok, 'pass',
+            'URL から外れ部屋は残る=%s / カードで聞く=%s / 押すまで書かない=%s / 取り込んだ=%s / 名前欄=%s / ほかの鍵は無視=%s / 一度きり=%s / 壊れたデータは警告=%s'
+            % (stripped, asked, untouched, took, shown, only, once, bad))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--url', default=None, help='既定 http://localhost:<web-port>/')
@@ -4652,6 +4690,8 @@ def main():
             T103(r, room)
         if run('T104'):
             T104(r, room)
+        if run('T105'):
+            T105(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
